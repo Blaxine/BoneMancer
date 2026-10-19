@@ -1,0 +1,21 @@
+schema_version = "1.0.0"
+
+id = "bonemancer"
+version = "1.0.0"
+name = "Bone Mancer: Rig Central"
+tagline = "Animator hub for bone sets, props, constraints and shape keys"
+maintainer = "Blaxine"
+type = "add-on"
+
+tags = ["Rigging", "Animation"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "/.git/",
+  "/*.zip",
+]

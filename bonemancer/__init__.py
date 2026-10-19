@@ -1,14 +1,5 @@
-
-
-bl_info = {
-    "name":        "Bone Mancer: Rig Central",
-    "author":      "Laurent",
-    "version":     (1, 1, 0),
-    "blender":     (4, 1, 0),
-    "location":    "View3D > Sidebar > Bonemancer",
-    "description": "Organize bones into collections with per-collection & per-bone hide/show icons",
-    "category":    "Rigging"
-}
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Bone Mancer: Rig Central. Animator control hub for bone sets, custom properties, constraints and shape keys."""
 
 import bpy
 import re
