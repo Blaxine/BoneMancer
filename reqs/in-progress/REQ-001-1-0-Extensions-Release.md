@@ -220,10 +220,18 @@ UILists: `RMV2_UL_ConstraintList`, `RMV_2_BONE_UL_selection_list`,
 | `RMV2_*`, `RMV_2_BONE_UL_selection_list` | `BONEMANCER_OT_* / _PT_* / _UL_*` |
 | `rmv2_depsgraph_handler` | name free; stays the single handler |
 
-`_read_legacy_groups` is the pattern for reading any legacy property in 5.x:
-register a same-named RNA property, read, unregister; delete through
-`scene.pop(key)` **and** `property_unset` after re-registering. Object-level
-`rmv2_groups` needs the same treatment on `bpy.types.Object`.
+As implemented (S013–S014): stored set name `group_name` → `name`; operator
+property `group_name` → `set_name`; operators `bonemancer.add_bone_to_set`,
+`toggle_set`, `toggle_set_foldout`, `remove_set`, `remove_bone_from_set`,
+`toggle_bone`, `select_bone`, `rename_bone`, `add_custom_prop`,
+`toggle_bone_constraints`, `show_bone_relations`, `show_constraint_error`,
+`scan_shape_keys`, `toggle_shape_keys`, `toggle_shape_keyframe`; handler
+`on_depsgraph_update`.
+
+Legacy reads go through `legacy_stores(id)`: the ID's custom properties plus,
+on 5.x, `id.bl_system_properties_get(do_create=False)`. Reading and deleting
+both stores covers 4.x files, 5.x files and 4.x files opened in 5.x without
+registering temporary RNA properties.
 
 ### Native collections API (Slice 5)
 
@@ -322,11 +330,11 @@ intact under the new names, on all three versions.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S013 | P | Rename stored properties | Apply the *Rename map* to stored properties and settings PropertyGroups. | S012 | `bonemancer/__init__.py` |
-|  | S014 | S | Rename operators and classes | `bonemancer.*` operator ids, `BONEMANCER_*` classes, panel/UIList ids; update every `layout.operator`, `template_list` and `bpy.ops` reference. | S013 | `bonemancer/__init__.py` |
-|  | S015 | P | Extend migration | Add Object `rmv2_groups` → `bonemancer_sets` and Scene `rmv2_rig` → `bonemancer_rig` to the migration chain using the system-property-aware reader; keep the Scene `rmv2_groups_<name>` path. | S013 | `bonemancer/__init__.py` |
-|  | S016 | T | Extend migration suite | Vendor the `ec08568` module; cover both legacy formats and a 4.x file opened in 5.x. | S015 | `tests/` |
-|  | S017 | T | Fix other suites for new names | Update smoke, pitfall and library suites to the new identifiers. | S014 | `tests/` |
+| ✅ | S013 | P | Rename stored properties | Apply the *Rename map* to stored properties and settings PropertyGroups. | S012 | `bonemancer/__init__.py` |
+| ✅ | S014 | S | Rename operators and classes | `bonemancer.*` operator ids, `BONEMANCER_*` classes, panel/UIList ids; update every `layout.operator`, `template_list` and `bpy.ops` reference. | S013 | `bonemancer/__init__.py` |
+| ✅ | S015 | P | Extend migration | Add Object `rmv2_groups` → `bonemancer_sets` and Scene `rmv2_rig` → `bonemancer_rig` to the migration chain using the system-property-aware reader; keep the Scene `rmv2_groups_<name>` path. | S013 | `bonemancer/__init__.py` |
+| ✅ | S016 | T | Extend migration suite | Vendor the `ec08568` module; cover both legacy formats and a 4.x file opened in 5.x. | S015 | `tests/` |
+| ✅ | S017 | T | Fix other suites for new names | Update smoke, pitfall and library suites to the new identifiers. | S014 | `tests/` |
 
 ### Slice 4 — Bone Sets naming
 

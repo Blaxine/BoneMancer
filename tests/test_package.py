@@ -74,12 +74,12 @@ if check("user extension repo is isolated", isolated):
 
     def install():
         bpy.ops.extensions.package_install_files(filepath=zip_path, repo="user_default", enable_on_install=True)
-        got = (module in bpy.context.preferences.addons.keys(), hasattr(bpy.types.Scene, "rmv2_rig"))
+        got = (module in bpy.context.preferences.addons.keys(), hasattr(bpy.types.Scene, "bonemancer_rig"))
         return (got == (True, True), got)
     check("install and enable", install)
 
     def panels():
-        got = [c for c in ("RMV2_PT_ArmaturePicker", "RMV2_PT_Collections", "RMV2_PT_ShapeKeyScanner")
+        got = [c for c in ("BONEMANCER_PT_rig", "BONEMANCER_PT_bone_sets", "BONEMANCER_PT_shape_keys")
                if not hasattr(bpy.types, c)]
         return (got == [], got)
     check("panels registered", panels)
@@ -87,7 +87,7 @@ if check("user extension repo is isolated", isolated):
     def uninstall():
         repo, index = user_repo()
         bpy.ops.extensions.package_uninstall(repo_index=index, pkg_id="bonemancer")
-        got = (os.path.isdir(os.path.join(repo.directory, "bonemancer")), hasattr(bpy.types.Scene, "rmv2_rig"))
+        got = (os.path.isdir(os.path.join(repo.directory, "bonemancer")), hasattr(bpy.types.Scene, "bonemancer_rig"))
         return (got == (False, False), got)
     check("uninstall", uninstall)
 

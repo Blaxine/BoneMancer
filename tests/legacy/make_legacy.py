@@ -2,7 +2,8 @@
 
     blender -b --factory-startup --python make_legacy.py -- LEGACY_MODULE OUT_BLEND FORMAT
 
-FORMAT "scene": groups as Scene.rmv2_groups_<armature> (commit 04883fb).
+FORMAT "scene":  groups as Scene.rmv2_groups_<armature> (commit 04883fb).
+FORMAT "object": groups as Object.rmv2_groups, pick as Scene.rmv2_rig (commit ec08568).
 
 The file always holds rig "Hero Rig.001" (bones spine, head) with group "Body"
 (spine, head; expanded; head shows constraints) and rig "Prop" without groups,
@@ -47,6 +48,12 @@ if fmt == "scene":
     bpy.ops.rmv2.add_bone_to_collection(bone_name="spine", create_new=True, new_group_name="Body")
     bpy.ops.rmv2.add_bone_to_collection(bone_name="head", group_enum="Body")
     group = getattr(sc, "rmv2_groups_Hero_Rig_001")[0]
+elif fmt == "object":
+    rig = bpy.data.objects["Hero Rig.001"]
+    sc.rmv2_rig = rig
+    bpy.ops.rmv2.add_bone_to_collection(bone_name="spine", create_new=True, new_group_name="Body")
+    bpy.ops.rmv2.add_bone_to_collection(bone_name="head", group_enum="Body")
+    group = rig.rmv2_groups[0]
 else:
     raise SystemExit(f"unknown format {fmt!r}")
 

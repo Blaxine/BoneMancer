@@ -17,8 +17,8 @@ from helpers import check, finish, load_addon, tmp_dir, other_blenders, LEGACY_D
 
 FORMATS = {
     "scene": "bonemancer_04883fb.py",
+    "object": "bonemancer_ec08568.py",
 }
-LEGACY_KEY = "rmv2_groups_Hero_Rig_001"
 
 
 def blender_version(binary):
@@ -39,16 +39,16 @@ def generate(binary, fmt, out_path):
 def state():
     sc = bpy.context.scene
     rig = bpy.data.objects["Hero Rig.001"]
-    groups = [(g.group_name, g.show_expanded,
+    groups = [(g.name, g.show_expanded,
                [(b.bone_name, b.show_custom_props, b.show_constraints) for b in g.bones])
-              for g in rig.rmv2_groups]
-    leftovers = [k for k in sc.keys() if k.startswith("rmv2_groups_")]
-    leftovers += [k for k in (LEGACY_KEY,) if mod._read_legacy_groups(sc, k)[0]]
+              for g in rig.bonemancer_sets]
+    leftovers = [f"{id_data.name}:{k}" for id_data in (sc, rig, bpy.data.objects["Prop"])
+                 for store in mod.legacy_stores(id_data) for k in store.keys() if k.startswith("rmv2_")]
     return {
         "groups": groups,
         "legacy_left": leftovers,
-        "picked": sc.rmv2_rig.name if sc.rmv2_rig else None,
-        "prop_groups": len(bpy.data.objects["Prop"].rmv2_groups),
+        "picked": sc.bonemancer_rig.name if sc.bonemancer_rig else None,
+        "prop_groups": len(bpy.data.objects["Prop"].bonemancer_sets),
     }
 
 
