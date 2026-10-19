@@ -102,7 +102,6 @@ def smoke():
         ("remove_bone", lambda: bpy.ops.rmv2.remove_bone(group_name="Arms", bone_name="arm_renamed.L")),
         ("remove_bone missing group -> cancelled", lambda: (bpy.ops.rmv2.remove_bone(group_name="Nope", bone_name="x") == {'CANCELLED'}, None)),
         ("remove_group", lambda: bpy.ops.rmv2.remove_group(group_name="Arms")),
-        ("legacy add_to_group", lambda: bpy.ops.rmv2.add_to_group(mode='NEW', new_name="G")),
         ("scan_shape_keys", scan),
         ("key_shape_value insert/remove/insert", keytest),
         ("handler run", handler_run),
@@ -235,10 +234,10 @@ check("P8b non-ASCII armature name works", p8b)
 
 
 def p8c():
-    reset(); arm = make_arm("Rig", ("Knochen_ä", "b")); pick(arm)
-    sc.rmv2_bone = "Knochen_ä"
-    return (sc.rmv2_bone == "Knochen_ä", sc.rmv2_bone)
-check("P8c non-ASCII bone in dynamic enum", p8c)
+    reset(); arm = make_arm("Rig"); pick(arm); add("a", "Gruppe_ä")
+    r = bpy.ops.rmv2.add_bone_to_collection(bone_name="b", group_enum="Gruppe_ä")
+    return (r == {'FINISHED'} and entries(arm) == ["a", "b"], (r, entries(arm)))
+check("P8c non-ASCII group name in dynamic enum", p8c)
 
 
 def p9():
@@ -344,14 +343,6 @@ def p19():
 check("P19 keyframe toggle on shape key with quote", p19)
 
 
-def p20():
-    reset(); arm = make_arm("Rig"); pick(arm)
-    sc.rmv2_rmgr_settings.bone_selection_index = 1
-    bpy.ops.rmv2.add_to_group(mode='NEW', new_name="Legacy")
-    return (entries(arm) == ["b"], entries(arm))
-check("P20 legacy add_to_group uses the highlighted picker bone", p20)
-
-
 def p21():
     reset(); arm = make_arm("Rig"); pick(arm); add("a"); add("b")
     bpy.ops.rmv2.toggle_bone(bone_name="a")
@@ -363,8 +354,7 @@ check("P21 group toggle unifies visibility", p21)
 
 def p22():
     must = {"rmv2.remove_bone", "rmv2.remove_group", "rmv2.toggle_bone", "rmv2.toggle_group", "rmv2.select_bone",
-            "rmv2.key_shape_value", "rmv2.rename_bone", "rmv2.add_custom_prop", "rmv2.add_bone_to_collection",
-            "rmv2.add_to_group"}
+            "rmv2.key_shape_value", "rmv2.rename_bone", "rmv2.add_custom_prop", "rmv2.add_bone_to_collection"}
     missing = sorted(c.bl_idname for c in mod.classes
                      if getattr(c, "bl_idname", "") in must and 'UNDO' not in getattr(c, "bl_options", set()))
     return (missing == [] and hasattr(mod.RMV2_OT_RemoveGroup, "invoke"), missing)
@@ -410,18 +400,21 @@ check("P26 subframe key isn't treated as a key on the whole frame", p26)
 
 # ---------------------------------------------------------------- lifecycle
 
-def leftover_props():
-    return [p for p in dir(bpy.types.Scene) + dir(bpy.types.Object) if p.startswith(("rmv2_", "bonemancer_"))]
-
-
 def leftover_handlers():
     hs = list(bpy.app.handlers.depsgraph_update_post) + list(bpy.app.handlers.load_post)
     return [h.__name__ for h in hs if h.__module__ == mod.__name__]
 
 
+def registered_props():
+    return sorted(p for p in dir(bpy.types.Scene) + dir(bpy.types.Object) if p.startswith(("rmv2_", "bonemancer_")))
+
+
+EXPECTED_PROPS = sorted(["rmv2_rig", "rmv2_rmgr_settings", "rmv2_shape_key_scanner", "rmv2_selected_bone", "rmv2_groups"])
+check("registered properties match the allow-list", lambda: (registered_props() == EXPECTED_PROPS, registered_props()))
+
 reset()
 check("unregister()", mod.unregister)
-check("no leftover add-on props", lambda: (leftover_props() == [], leftover_props()))
+check("no leftover add-on props", lambda: (registered_props() == [], registered_props()))
 check("no leftover handlers", lambda: (leftover_handlers() == [], leftover_handlers()))
 check("foreign handler still present", lambda: (foreign_handler in bpy.app.handlers.depsgraph_update_post, None))
 check("re-register()", mod.register)

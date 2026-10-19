@@ -310,9 +310,9 @@ properties match an explicit allow-list.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S010 | X | Remove half-built code | Delete the functions and classes in *Removal inventory*. | S009 | `bonemancer/__init__.py` |
-|  | S011 | P | Remove unused properties | Delete the Scene properties and PropertyGroup fields in *Removal inventory*, and their `unregister` entries. | S010 | `bonemancer/__init__.py` |
-|  | S012 | T | Extend smoke suite: property allow-list | Assert registered `Scene`/`Object` add-on properties equal the expected set; drop the `add_to_group` check. | S011 | `tests/` |
+| ✅ | S010 | X | Remove half-built code | Delete the functions and classes in *Removal inventory*. | S009 | `bonemancer/__init__.py` |
+| ✅ | S011 | P | Remove unused properties | Delete the Scene properties and PropertyGroup fields in *Removal inventory*, and their `unregister` entries. | S010 | `bonemancer/__init__.py` |
+| ✅ | S012 | T | Extend smoke suite: property allow-list | Assert registered `Scene`/`Object` add-on properties equal the expected set; drop the `add_to_group` check. | S011 | `tests/` |
 
 ### Slice 3 — Permanent `bonemancer` identifiers
 
