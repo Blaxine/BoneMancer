@@ -344,9 +344,9 @@ Set", and the suite's string check passes.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S018 | U | Rename UI strings | Apply the *Strings to rename* list in UI / UX Notes. | S017 | `bonemancer/__init__.py` |
-|  | S019 | D | Glossary: Bone Set | Add **Bone Set** to `reqs/GLOSSARY.md`; update the **Group** entry to point at it. | S018 | `reqs/GLOSSARY.md` |
-|  | S020 | T | String check (new) | Scan registered operator `bl_label`/`bl_description` and panel labels for "collection" outside native-collection wording. | S018 | `tests/` |
+| ✅ | S018 | U | Rename UI strings | Apply the *Strings to rename* list in UI / UX Notes. | S017 | `bonemancer/__init__.py` |
+| ✅ | S019 | D | Glossary: Bone Set | Add **Bone Set** to `reqs/GLOSSARY.md`; update the **Group** entry to point at it. | S018 | `reqs/GLOSSARY.md` |
+| ✅ | S020 | T | String check (new) | Scan registered operator `bl_label`/`bl_description` and panel labels for "collection" outside native-collection wording. | S018 | `tests/` |
 
 ### Slice 5 — Import Bone Collections
 

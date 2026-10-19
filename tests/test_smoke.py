@@ -1,6 +1,7 @@
 """Smoke checks, pitfall regressions and register/unregister lifecycle."""
 
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -407,6 +408,37 @@ def leftover_handlers():
 
 def registered_props():
     return sorted(p for p in dir(bpy.types.Scene) + dir(bpy.types.Object) if p.startswith(("rmv2_", "bonemancer_")))
+
+
+def ui_strings():
+    """Every label, description and property name BoneMancer registers."""
+    for cls in mod.classes:
+        idname = getattr(cls, "bl_idname", "")
+        if issubclass(cls, bpy.types.Operator):
+            rna = getattr(bpy.ops, idname.split(".")[0]).__getattr__(idname.split(".")[1]).get_rna_type()
+            yield idname, rna.name
+            yield idname, rna.description
+            props = rna.properties
+        elif issubclass(cls, bpy.types.Panel):
+            yield idname, cls.bl_label
+            continue
+        elif issubclass(cls, bpy.types.PropertyGroup):
+            props = cls.bl_rna.properties
+        else:
+            continue
+        for p in props:
+            if p.identifier != "rna_type":
+                yield f"{cls.__name__}.{p.identifier}", p.name
+                yield f"{cls.__name__}.{p.identifier}", p.description
+
+
+def wrong_set_terms():
+    # BoneMancer's own sets are "Bone Sets"; "Bone Collection" only means Blender's native ones
+    pattern = re.compile(r"(?<!Bone )\bcollections?\b|\bgroups?\b", re.I)
+    return sorted({f"{where}: {text}" for where, text in ui_strings() if text and pattern.search(text)})
+
+
+check("UI says Bone Set, never collection/group", lambda: (wrong_set_terms() == [], wrong_set_terms()))
 
 
 EXPECTED_PROPS = sorted(["bonemancer_rig", "bonemancer_settings", "bonemancer_shape_keys", "bonemancer_selected_bone", "bonemancer_sets"])

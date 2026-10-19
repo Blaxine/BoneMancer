@@ -94,7 +94,7 @@ class BONEMANCER_PG_BoneSet(PropertyGroup):
     name: StringProperty(name="Name", override={'LIBRARY_OVERRIDABLE'})
     bones: CollectionProperty(type=BONEMANCER_PG_SetBone, override={'LIBRARY_OVERRIDABLE', 'USE_INSERTION'})
     show_expanded: BoolProperty(
-        name="Expand Group",
+        name="Expand Bone Set",
         description="Toggle bone list visibility",
         default=False,
         override={'LIBRARY_OVERRIDABLE'}
@@ -662,8 +662,8 @@ def set_is_hidden(arm_obj, group):
 
 class BONEMANCER_OT_toggle_set(bpy.types.Operator):
     bl_idname = "bonemancer.toggle_set"
-    bl_label = "Toggle Group"
-    bl_description = "Hide every bone in this collection, or show them all if all are hidden"
+    bl_label = "Toggle Bone Set Visibility"
+    bl_description = "Hide every bone in this bone set, or show them all if all are hidden"
     bl_options = {'REGISTER', 'UNDO'}
     set_name: StringProperty()
 
@@ -672,7 +672,7 @@ class BONEMANCER_OT_toggle_set(bpy.types.Operator):
         obj = get_rig(sc)
         group = find_set(sc, self.set_name)
         if not rig_is_editable(obj) or not group:
-            self.report({'WARNING'}, f"Group '{self.set_name}' not found")
+            self.report({'WARNING'}, f"Bone set '{self.set_name}' not found")
             return {'CANCELLED'}
         # Mixed visibility hides all; only a fully hidden group is shown again
         hide = not set_is_hidden(obj, group)
@@ -683,7 +683,8 @@ class BONEMANCER_OT_toggle_set(bpy.types.Operator):
 
 class BONEMANCER_OT_remove_bone_from_set(bpy.types.Operator):
     bl_idname = "bonemancer.remove_bone_from_set"
-    bl_label = "Remove Bone"
+    bl_label = "Remove Bone from Set"
+    bl_description = "Remove this bone from the bone set (the bone itself is kept)"
     bl_options = {'REGISTER', 'UNDO'}
     set_name: StringProperty()
     bone_name: bpy.props.StringProperty()
@@ -691,7 +692,7 @@ class BONEMANCER_OT_remove_bone_from_set(bpy.types.Operator):
     def execute(self, context):
         group = find_set(context.scene, self.set_name)
         if not group or not rig_is_editable(get_rig(context.scene)):
-            self.report({'WARNING'}, f"Group '{self.set_name}' not found")
+            self.report({'WARNING'}, f"Bone set '{self.set_name}' not found")
             return {'CANCELLED'}
         for i, b in enumerate(group.bones):
             if b.bone_name == self.bone_name:
@@ -702,8 +703,8 @@ class BONEMANCER_OT_remove_bone_from_set(bpy.types.Operator):
 
 class BONEMANCER_OT_remove_set(bpy.types.Operator):
     bl_idname = "bonemancer.remove_set"
-    bl_label = "Remove Group"
-    bl_description = "Delete this collection (the bones themselves are kept)"
+    bl_label = "Remove Bone Set"
+    bl_description = "Delete this bone set (the bones themselves are kept)"
     bl_options = {'REGISTER', 'UNDO'}
     set_name: StringProperty()
 
@@ -986,13 +987,14 @@ class BONEMANCER_OT_add_custom_prop(bpy.types.Operator):
 
 class BONEMANCER_OT_add_bone_to_set(bpy.types.Operator):
     bl_idname = "bonemancer.add_bone_to_set"
-    bl_label = "Add Bone to Collection"
+    bl_label = "Add Bone to Bone Set"
+    bl_description = "Add this bone to a new or existing bone set"
     bl_options = {'REGISTER', 'UNDO'}
 
     bone_name: StringProperty(options={'HIDDEN'})
-    set_enum: EnumProperty(name="Collection", items=get_set_items)
-    create_new: BoolProperty(name="Create New?", default=False)
-    new_set_name: StringProperty(name="New Collection Name", default="")
+    set_enum: EnumProperty(name="Bone Set", items=get_set_items)
+    create_new: BoolProperty(name="New Bone Set", default=False)
+    new_set_name: StringProperty(name="Bone Set Name", default="")
 
     @classmethod
     def poll(cls, context):
@@ -1009,7 +1011,7 @@ class BONEMANCER_OT_add_bone_to_set(bpy.types.Operator):
         if self.create_new:
             layout.prop(self, "new_set_name", text="Name")
         else:
-            layout.prop(self, "set_enum", text="Collection")
+            layout.prop(self, "set_enum", text="Bone Set")
 
     def execute(self, context):
         arm_obj = get_rig(context.scene)
@@ -1024,12 +1026,12 @@ class BONEMANCER_OT_add_bone_to_set(bpy.types.Operator):
         if self.create_new:
             name = self.new_set_name.strip()
             if not name:
-                self.report({'ERROR'}, "New collection name cannot be empty")
+                self.report({'ERROR'}, "Bone set name cannot be empty")
                 return {'CANCELLED'}
         else:
             name = self.set_enum
             if not name:
-                self.report({'ERROR'}, "No collection to add to; create a new one")
+                self.report({'ERROR'}, "No bone set to add to; create a new one")
                 return {'CANCELLED'}
 
         # 3) Find or make that group
@@ -1052,8 +1054,8 @@ class BONEMANCER_OT_add_bone_to_set(bpy.types.Operator):
 
 class BONEMANCER_OT_toggle_set_foldout(bpy.types.Operator):
     bl_idname = "bonemancer.toggle_set_foldout"
-    bl_label = "Toggle Group Foldout"
-    bl_description = "Expand or collapse this bone group in the UI"
+    bl_label = "Expand Bone Set"
+    bl_description = "Expand or collapse this bone set"
 
     set_name: StringProperty()
 
@@ -1099,7 +1101,7 @@ class BONEMANCER_PT_rig(bpy.types.Panel):
                 )
 
 class BONEMANCER_PT_bone_sets(bpy.types.Panel):
-    bl_label = "Collections"
+    bl_label = "Bone Sets"
     bl_idname = "BONEMANCER_PT_bone_sets"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -1142,7 +1144,7 @@ class BONEMANCER_PT_bone_sets(bpy.types.Panel):
             groups = obj.bonemancer_sets
 
             if not groups:
-                layout.label(text="(no collections)", icon='INFO')
+                layout.label(text="No Bone Sets yet", icon='INFO')
                 return
 
             # Draw each collection group
@@ -1213,7 +1215,7 @@ class BONEMANCER_PT_bone_sets(bpy.types.Panel):
                                     val = pb[key]
                                     # Nested groups have no single widget
                                     if hasattr(val, "keys"):
-                                        cbox.label(text=f"{key} (group)")
+                                        cbox.label(text=f"{key} (property group)")
                                         continue
                                     # 1) Arrays → grouped fields
                                     if isinstance(val, (list, tuple)):
