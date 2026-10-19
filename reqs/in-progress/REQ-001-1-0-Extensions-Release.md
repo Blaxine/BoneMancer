@@ -356,10 +356,10 @@ creates the ticked sets, and a second import merges without losing user edits.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S021 | S | Import operator | `bonemancer.*` operator with `UNDO`: `invoke` fills the checklist from `collections_all` (name, direct-bone count, ticked unless 0, nesting depth); `execute` applies *Import semantics*; refuses linked rigs; disabled when the rig has no native collections. | S020 | `bonemancer/__init__.py` |
-|  | S022 | U | Import entry points | Button in the Bone Sets panel; empty state with the button when the picked rig has no sets; indented checklist dialog. | S021 | `bonemancer/__init__.py` |
-|  | S023 | D | Glossary: Import Bone Collections | Add **Import Bone Collections** to `reqs/GLOSSARY.md`. | S021 | `reqs/GLOSSARY.md` |
-|  | S024 | T | Import suite (new) | Fresh import; nested collections → one set each, direct bones only; zero-bone unticked; re-import adds missing bones / sets and keeps user edits, order and user sets; overridden rig works; linked rig refused; dialog draw against a mock layout. | S022 | `tests/` |
+| ✅ | S021 | S | Import operator | `bonemancer.*` operator with `UNDO`: `invoke` fills the checklist from `collections_all` (name, direct-bone count, ticked unless 0, nesting depth); `execute` applies *Import semantics*; refuses linked rigs; disabled when the rig has no native collections. | S020 | `bonemancer/__init__.py` |
+| ✅ | S022 | U | Import entry points | Button in the Bone Sets panel; empty state with the button when the picked rig has no sets; indented checklist dialog. | S021 | `bonemancer/__init__.py` |
+| ✅ | S023 | D | Glossary: Import Bone Collections | Add **Import Bone Collections** to `reqs/GLOSSARY.md`. | S021 | `reqs/GLOSSARY.md` |
+| ✅ | S024 | T | Import suite (new) | Fresh import; nested collections → one set each, direct bones only; zero-bone unticked; re-import adds missing bones / sets and keeps user edits, order and user sets; overridden rig works; linked rig refused; dialog draw against a mock layout. | S022 | `tests/` |
 
 ### Slice 6 — Release-ready repository
 

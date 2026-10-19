@@ -11,6 +11,7 @@ introduces them, not ad hoc.
 | Depsgraph handler | The add-on's single `depsgraph_update_post` handler: follows the active armature, rebuilds the Bone Picker, tracks outside renames, mirrors selection, tags redraws. | Skipped during animation playback. |
 | Extension | Blender 4.2+ add-on package format: a folder with `__init__.py` and `blender_manifest.toml`, built into a zip. | Installed module name is `bl_ext.<repo>.<id>`. |
 | Group | Former name of a **Bone Set**; still used in the legacy storage keys `rmv2_groups*`. | Not used in the UI or new code. |
+| Import Bone Collections | The Bone Sets panel action that creates one Bone Set per ticked native bone collection of the picked rig, holding that collection's direct bones. | Re-import merges by set name: adds missing bones and sets, never removes or reorders. Empty collections start unticked. |
 | Legacy groups | Bone Set data written by earlier BoneMancer versions: Scene `rmv2_groups_<sanitized armature name>` (≤ 1.0 dev) and Object `rmv2_groups` (commit `ec08568`). | Migrated on file load, then deleted. |
 | Library override | A local, editable copy of a rig linked from another .blend. BoneMancer data on it is editable; bone renames and new custom properties are not persisted by Blender. | A linked rig without an override is read-only. |
 | Linked rig | A rig object whose `library` is set and that has no library override. | All editing operators refuse on it. |

@@ -1067,6 +1067,104 @@ class BONEMANCER_OT_toggle_set_foldout(bpy.types.Operator):
             return {'FINISHED'}
         return {'CANCELLED'}
 
+
+class BONEMANCER_PG_ImportItem(PropertyGroup):
+    """One native bone collection in the import checklist."""
+    name: StringProperty(name="Name")
+    use: BoolProperty(name="Import", default=True)
+    bone_count: IntProperty(name="Bones")
+    depth: IntProperty(name="Depth")
+
+
+def native_collections(arm):
+    """(collection, depth) for every bone collection of arm, parents before children."""
+    def walk(colls, depth):
+        for coll in colls:
+            yield coll, depth
+            yield from walk(coll.children, depth + 1)
+    return list(walk(arm.collections, 0))
+
+
+class BONEMANCER_OT_import_bone_collections(bpy.types.Operator):
+    bl_idname = "bonemancer.import_bone_collections"
+    bl_label = "Import Bone Collections"
+    bl_description = ("Create a bone set from each ticked bone collection of the rig. "
+                      "Sets with the same name gain the missing bones; nothing is removed or reordered")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    items: CollectionProperty(type=BONEMANCER_PG_ImportItem, options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        arm_obj = get_rig(context.scene)
+        if arm_obj is None:
+            return False
+        if not len(arm_obj.data.collections_all):
+            cls.poll_message_set("The rig has no bone collections")
+            return False
+        return True
+
+    def fill_items(self, arm_obj):
+        self.items.clear()
+        for coll, depth in native_collections(arm_obj.data):
+            item = self.items.add()
+            item.name = coll.name
+            item.bone_count = len(coll.bones)
+            item.depth = depth
+            # Empty collections (often just parents of others) start unticked
+            item.use = item.bone_count > 0
+
+    def invoke(self, context, event):
+        arm_obj = get_rig(context.scene)
+        if not rig_is_editable(arm_obj):
+            self.report({'ERROR'}, "Rig is linked from a library; make a library override first")
+            return {'CANCELLED'}
+        self.fill_items(arm_obj)
+        return context.window_manager.invoke_props_dialog(self, width=340)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="Bone collections to import as bone sets:")
+        col = layout.column(align=True)
+        for item in self.items:
+            row = col.row(align=True)
+            if item.depth:
+                row.separator(factor=2.0 * item.depth)
+            row.prop(item, "use", text=item.name)
+            count = row.row()
+            count.alignment = 'RIGHT'
+            count.label(text=f"{item.bone_count} bone{'' if item.bone_count == 1 else 's'}")
+
+    def execute(self, context):
+        arm_obj = get_rig(context.scene)
+        if not rig_is_editable(arm_obj):
+            self.report({'ERROR'}, "Rig is linked from a library; make a library override first")
+            return {'CANCELLED'}
+        if not len(self.items):
+            # Called without the dialog (scripts): import every non-empty collection
+            self.fill_items(arm_obj)
+
+        native = {coll.name: coll for coll in arm_obj.data.collections_all}
+        sets_created = bones_added = 0
+        for item in self.items:
+            coll = native.get(item.name)
+            if not item.use or coll is None:
+                continue
+            bone_set = next((s for s in arm_obj.bonemancer_sets if s.name == coll.name), None)
+            if bone_set is None:
+                bone_set = arm_obj.bonemancer_sets.add()
+                bone_set.name = coll.name
+                sets_created += 1
+            present = {entry.bone_name for entry in bone_set.bones}
+            for bone in coll.bones:
+                if bone.name not in present:
+                    bone_set.bones.add().bone_name = bone.name
+                    bones_added += 1
+
+        self.report({'INFO'}, f"Bone sets created: {sets_created}, bones added: {bones_added}")
+        return {'FINISHED'}
+
+
 class BONEMANCER_PT_rig(bpy.types.Panel):
     bl_label = "Bonemancer Rig Central"
     bl_idname = "BONEMANCER_PT_rig"
@@ -1145,7 +1243,7 @@ class BONEMANCER_PT_bone_sets(bpy.types.Panel):
 
             if not groups:
                 layout.label(text="No Bone Sets yet", icon='INFO')
-                return
+            layout.operator("bonemancer.import_bone_collections", icon='IMPORT')
 
             # Draw each collection group
             for grp in groups:
@@ -1362,8 +1460,10 @@ classes = [
     BONEMANCER_PG_PickerBone,
     BONEMANCER_PG_Settings,
     BONEMANCER_PG_ShapeKeyScanner,
+    BONEMANCER_PG_ImportItem,
 
     # Operators
+    BONEMANCER_OT_import_bone_collections,
     BONEMANCER_OT_select_bone,
     BONEMANCER_OT_toggle_bone,
     BONEMANCER_OT_toggle_set,
