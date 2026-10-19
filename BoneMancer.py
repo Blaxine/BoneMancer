@@ -22,6 +22,33 @@ _last_selected_armature = None
 _armature_change_from_viewport = False
 
 
+# --- Blender 4.x / 5.x compatibility -------------------------------------
+# Blender 5.0 moved pose-mode selection/visibility from Bone to PoseBone
+# and removed Action.fcurves in favour of slotted actions (channelbags).
+
+def bone_is_selected(pb):
+    return pb.select if hasattr(pb, "select") else pb.bone.select
+
+def set_bone_selected(pb, value):
+    if hasattr(pb, "select"):
+        pb.select = value
+    else:
+        pb.bone.select = value
+
+def get_anim_fcurves(anim_data):
+    """Return the F-curves of the action assigned to anim_data (any Blender version)."""
+    action = anim_data.action if anim_data else None
+    if not action:
+        return []
+    slot = getattr(anim_data, "action_slot", None)
+    if slot is not None:
+        from bpy_extras import anim_utils
+        channelbag = anim_utils.action_get_channelbag_for_slot(action, slot)
+        return channelbag.fcurves if channelbag else []
+    # Pre-5.0 legacy API; on 5.x an action without an assigned slot has no curves yet
+    return getattr(action, "fcurves", [])
+
+
 class RMV2_CustomPropItem(PropertyGroup):
         name: StringProperty(name="Property Name")  
         
@@ -128,7 +155,7 @@ class ObjectShapeKeyGroup(bpy.types.PropertyGroup):
     object_name:      StringProperty(name="Mesh Object Name")
     show_shape_keys:  BoolProperty(
         name="Show Shape Keys", default=False,
-        description="Toggle visibility of this meshâ€™s shape-key list"
+        description="Toggle visibility of this mesh’s shape-key list"
     )
     shape_keys:       CollectionProperty(type=ShapeKeyItem)
     shape_keys_index: IntProperty(default=0)
@@ -237,8 +264,8 @@ class RMV2_OT_KeyShapeValue(bpy.types.Operator):
         path    = f'key_blocks["{self.shape_key_name}"].value'
         ensure_shape_keys_action(sk_data, obj.name)
 
-        action = sk_data.animation_data.action
-        fcu = next((fc for fc in action.fcurves if fc.data_path == path), None)
+        fcurves = get_anim_fcurves(sk_data.animation_data)
+        fcu = next((fc for fc in fcurves if fc.data_path == path), None)
         if fcu:
             removed = False
             for kp in list(fcu.keyframe_points):
@@ -281,11 +308,11 @@ class RMV2_UL_ShapeKeyList(bpy.types.UIList):
         # Keyframe icon at current frame
         icon = 'KEY_HLT'
         if kb and obj and obj.data.shape_keys.animation_data:
-            act = obj.data.shape_keys.animation_data.action
+            fcurves = get_anim_fcurves(obj.data.shape_keys.animation_data)
             path = f'key_blocks["{item.key_name}"].value'
-            if act and any(
+            if any(
                 int(kp.co.x) == context.scene.frame_current
-                for fc in act.fcurves if fc.data_path == path
+                for fc in fcurves if fc.data_path == path
                 for kp in fc.keyframe_points
             ):
                 icon = 'KEY_DEHLT'
@@ -337,7 +364,7 @@ class RMV2_PT_ShapeKeyScanner(bpy.types.Panel):
 class RMV2_OT_ShowBoneRelations(bpy.types.Operator):
     bl_idname = "bi.show_bone_relations"
     bl_label = "Show Bone Relations"
-    bl_description = "Display the selected boneâ€™s parent and children in a dialog"
+    bl_description = "Display the selected bone’s parent and children in a dialog"
     bl_options = {'REGISTER', 'INTERNAL'}
 
     bone_name: StringProperty(name="Bone Name")  # Passed from UIList row
@@ -381,7 +408,7 @@ class RMV2_OT_ShowBoneRelations(bpy.types.Operator):
         if bone.children:
             layout.label(text="Children:")
             for child in bone.children:
-                layout.label(text=f"  â€¢ {child.name}")
+                layout.label(text=f"  • {child.name}")
         else:
             layout.label(text="Children: None")
 
@@ -412,11 +439,16 @@ def safe_unregister_prop(base_type, prop_name):
 def is_hidden(pb):
     if not pb:
         return False
-    return getattr(pb, "bone", None) and pb.bone.hide
+    # Blender 5.0+ stores pose-mode visibility on the PoseBone
+    return pb.hide if hasattr(pb, "hide") else pb.bone.hide
 
 
 def toggle_hidden(pb):
-    if pb and hasattr(pb.bone, "hide"):
+    if not pb:
+        return
+    if hasattr(pb, "hide"):
+        pb.hide = not pb.hide
+    else:
         pb.bone.hide = not pb.bone.hide
             
 def remove_handlers(handlers):
@@ -438,13 +470,26 @@ def unregister_properties(static_props):
             delattr(bpy.types.Scene, p)
 
 def cleanup_dynamic_props():
-    for obj in bpy.data.objects:
-        if obj.type == 'ARMATURE':
-            safe = sanitize_name(obj.name)
-            prop = f"rmv2_groups_{safe}"
-            if hasattr(bpy.types.Scene, prop):
-                delattr(bpy.types.Scene, prop)   
-  
+    for key in dynamic_props:
+        if hasattr(bpy.types.Scene, key):
+            delattr(bpy.types.Scene, key)
+    dynamic_props.clear()
+
+
+def ensure_group_prop(arm_name):
+    """Register Scene.rmv2_groups_<armature> if needed and return its name."""
+    key = f"rmv2_groups_{sanitize_name(arm_name)}"
+    if not hasattr(bpy.types.Scene, key):
+        setattr(bpy.types.Scene, key, CollectionProperty(type=RMV2_Group))
+    if key not in dynamic_props:
+        dynamic_props.append(key)
+    return key
+
+
+def find_group(scene, group_name):
+    groups = getattr(scene, f"rmv2_groups_{sanitize_name(scene.rmv2_armature)}", [])
+    return next((g for g in groups if g.group_name == group_name), None)
+
 
 def update_driver_variable_paths(old_name, new_name):
     """
@@ -467,15 +512,12 @@ def update_driver_variable_paths(old_name, new_name):
                     if targ.data_path and bone_ref_old in targ.data_path:
                         targ.data_path = targ.data_path.replace(bone_ref_old, bone_ref_new)
                         count += 1
-                        print(f"[Var DataPath] {obj.name}: {targ.data_path}")
 
                     # 2) Update bone_target property
                     if hasattr(targ, "bone_target") and targ.bone_target == old_name:
                         targ.bone_target = new_name
                         count += 1
-                        print(f"[Var BoneTarget] {obj.name}: {fc.data_path}")
 
-    print(f"ðŸ”„ Updated {count} driver-variable references.")
     return count
 
 
@@ -511,40 +553,37 @@ def duplicate_driver(fcurve, target_id, target_path):
             if prop.identifier in {"mode", "use_additive"}:
                 setattr(new_mod, prop.identifier, getattr(mod, prop.identifier))
 
+def _armature_bone_names(arm_obj):
+    bones = arm_obj.data.edit_bones if arm_obj.mode == 'EDIT' else arm_obj.data.bones
+    return [b.name for b in bones]
+
 def update_bone_list(self, context):
     scene    = context.scene
     settings = scene.rmv2_rmgr_settings
+
+    arm_obj = bpy.data.objects.get(scene.rmv2_armature)
+    names = _armature_bone_names(arm_obj) if arm_obj and arm_obj.type == 'ARMATURE' else []
+
+    # Skip the rebuild when nothing changed (this runs from depsgraph handlers)
+    if names == [item.name for item in settings.bone_selection]:
+        return
+
     settings.bone_selection.clear()
+    for name in names:
+        item = settings.bone_selection.add()
+        item.name = name
 
-    arm_name = scene.rmv2_armature
-    arm_obj  = bpy.data.objects.get(arm_name)
-    if arm_obj and arm_obj.type == 'ARMATURE':
-        for bone in arm_obj.data.bones:
-            item = settings.bone_selection.add()
-            item.name = bone.name
+    settings.bone_selection_index = min(settings.bone_selection_index, max(len(names) - 1, 0))
 
-    settings.bone_selection_index = 0
-    
 def refresh_bones(context):
-    scene    = context.scene
-    settings = scene.rmv2_rmgr_settings
-
-    settings.bone_selection.clear()
-
-    obj = context.object
-    if obj and obj.type == 'ARMATURE':
-        bones = (obj.data.edit_bones if obj.mode == 'EDIT' 
-                 else obj.data.bones)
-        for b in bones:
-            item = settings.bone_selection.add()
-            item.name = b.name    
+    update_bone_list(None, context)
 
 @persistent
 def armature_monitor(scene):
     # Grab the active object from the current context
     arm = bpy.context.active_object
 
-    # Early out if it's not an armature in Pose Mode
+    # Early out if it's not an armature
     if not arm or arm.type != 'ARMATURE':
         return
 
@@ -565,28 +604,12 @@ def sync_selected_bone(scene, depsgraph=None):
     ob = ctx.active_object
     if not (ob and ob.type == 'ARMATURE' and ctx.mode == 'POSE'):
         return
-    scene.rmv2_selected_bone = next((pb.name for pb in ob.pose.bones if pb.bone.select), "")
-
-def update_custom_props_list(self, context):
-    """
-    Refresh the displayed list of custom properties for the active bone.
-    Uses the correct collection name from RMV2_Bone.
-    """
-    pg = context.scene.rmv2_bone_list_settings
-    pg.custom_props_display.clear()
-
-    bone = get_active_pose_bone(context)
-    if not bone:
-        return
-
-    for key, value in bone.items():
-        if key not in '_RNA_UI':
-            item = pg.custom_props_display.add()
-            item.name = key
-            item.value = str(value)
+    selected = next((pb.name for pb in ob.pose.bones if bone_is_selected(pb)), "")
+    if scene.rmv2_selected_bone != selected:
+        scene.rmv2_selected_bone = selected
 
 
-
+@persistent
 def depsgraph_update_handler(scene, depsgraph):
     ctx = bpy.context
     needs_bone_refresh = False
@@ -606,25 +629,17 @@ def depsgraph_update_handler(scene, depsgraph):
     if needs_redraw:
         tag_addon_panels(ctx)
 
-        
+
+@persistent
 def armature_list_update_handler(scene):
     global previous_armatures
 
-    print("depsgraphFired")
-    for items in bpy.data.objects:
-        if items.type =='ARMATURE':
-            print(f" object name : {items.name}") 
-        
     current_armatures = {obj.name for obj in bpy.data.objects if obj.type == 'ARMATURE'}
-    print(current_armatures)
-    print(previous_armatures)
     if current_armatures != previous_armatures:
         previous_armatures = current_armatures
-
-        # Force EnumProperty to refresh
-        scene.rmv2_armature = scene.rmv2_armature  # triggers update callback
+        # Refresh lists only; re-assigning rmv2_armature here would run
+        # on_armature_change and switch modes from inside a depsgraph handler.
         refresh_bone_list(bpy.context)
-        print("Armature list updated.")
 
 
 def get_armatures(self, context):
@@ -815,19 +830,18 @@ class RMV2_OT_AddToGroup(bpy.types.Operator):
             self.report({'ERROR'}, "No bone selected")
             return {'CANCELLED'}
 
-        safe = sanitize_name(arm)
-       
-        if not hasattr(context.scene, f"rmv2_groups_{safe}"):
-            setattr(bpy.types.Scene, f"rmv2_groups_{safe}", bpy.props.CollectionProperty(type=RMV2_Group))
-     
-        groups = getattr(sc, f"rmv2_groups_{safe}")
-        name = self.new_name if self.mode == 'NEW' else self.existing
+        groups = getattr(sc, ensure_group_prop(arm))
+        name = (self.new_name if self.mode == 'NEW' else self.existing).strip()
+        if not name:
+            self.report({'ERROR'}, "Group name cannot be empty")
+            return {'CANCELLED'}
         group = next((g for g in groups if g.group_name == name), None)
         if not group:
             group = groups.add()
             group.group_name = name
-        entry = group.bones.add()
-        entry.bone_name = bone
+        if bone not in [b.bone_name for b in group.bones]:
+            entry = group.bones.add()
+            entry.bone_name = bone
         return {'FINISHED'}
 
 
@@ -837,45 +851,38 @@ class RMV2_OT_SelectBone(bpy.types.Operator):
     bone_name: bpy.props.StringProperty()
 
     def execute(self, context):
-        print("--- SelectBone start ---")
         arm_name = context.scene.rmv2_armature
-        print("  scene.rmv2_armature =", arm_name)
         obj = bpy.data.objects.get(arm_name)
         if not obj or obj.type != 'ARMATURE':
             self.report({'WARNING'}, "No valid armature")
-            print("  abort: invalid armature")
             return {'CANCELLED'}
 
         # ensure armature visible
         obj.hide_set(False)
         obj.hide_viewport = False
-        print("  armature unhidden")
 
-        # Object mode â†’ Pose mode
-        bpy.ops.object.mode_set(mode='OBJECT')
+        # Object mode → Pose mode
+        if context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
         context.view_layer.objects.active = obj
         obj.select_set(True)
         bpy.ops.object.mode_set(mode='POSE')
-        print("  switched to Pose mode")
-
-        # deselect all bones
-        for p in obj.pose.bones:
-            p.bone.select = False
-        print("  deselected all bones")
 
         # pick our bone
         pb = obj.pose.bones.get(self.bone_name)
         if not pb:
             self.report({'WARNING'}, f"Bone '{self.bone_name}' not found")
-            print(f"  abort: bone {self.bone_name} missing")
             return {'CANCELLED'}
 
+        # deselect all bones
+        for p in obj.pose.bones:
+            set_bone_selected(p, False)
+
         # unhide & select target
-        pb.bone.hide   = False
-        pb.bone.select = True
+        if is_hidden(pb):
+            toggle_hidden(pb)
+        set_bone_selected(pb, True)
         obj.data.bones.active = pb.bone
-        print(f"  selected bone {pb.name!r}")
-        print("--- SelectBone done ---")
         return {'FINISHED'}
 
 class RMV2_OT_ToggleBone(bpy.types.Operator):
@@ -884,8 +891,11 @@ class RMV2_OT_ToggleBone(bpy.types.Operator):
     bone_name: bpy.props.StringProperty()
 
     def execute(self, context):
-        pb = bpy.data.objects.get(context.scene.rmv2_armature).pose.bones.get(self.bone_name)
-        toggle_hidden(pb)
+        obj = bpy.data.objects.get(context.scene.rmv2_armature)
+        if not obj or obj.type != 'ARMATURE':
+            self.report({'WARNING'}, "No valid armature")
+            return {'CANCELLED'}
+        toggle_hidden(obj.pose.bones.get(self.bone_name))
         return {'FINISHED'}
 
 
@@ -896,11 +906,11 @@ class RMV2_OT_ToggleGroup(bpy.types.Operator):
 
     def execute(self, context):
         sc = context.scene
-        arm = sc.rmv2_armature
-        safe = sanitize_name(arm)
-        obj = bpy.data.objects.get(arm)
-        groups = getattr(sc, f"rmv2_groups_{safe}")
-        group = next((g for g in groups if g.group_name == self.group_name), None)
+        obj = bpy.data.objects.get(sc.rmv2_armature)
+        group = find_group(sc, self.group_name)
+        if not obj or obj.type != 'ARMATURE' or not group:
+            self.report({'WARNING'}, f"Group '{self.group_name}' not found")
+            return {'CANCELLED'}
         for b in group.bones:
             toggle_hidden(obj.pose.bones.get(b.bone_name))
         return {'FINISHED'}
@@ -913,15 +923,10 @@ class RMV2_OT_RemoveBoneFromGroup(bpy.types.Operator):
     bone_name: bpy.props.StringProperty()
 
     def execute(self, context):
-        sc = context.scene
-        arm = sc.rmv2_armature
-        safe = sanitize_name(arm)
-        
-        if not hasattr(context.scene, f"rmv2_groups_{safe}"):
-            setattr(bpy.types.Scene, f"rmv2_groups_{safe}", bpy.props.CollectionProperty(type=RMV2_Group))
-        
-        groups = getattr(sc, f"rmv2_groups_{safe}")
-        group = next((g for g in groups if g.group_name == self.group_name), None)
+        group = find_group(context.scene, self.group_name)
+        if not group:
+            self.report({'WARNING'}, f"Group '{self.group_name}' not found")
+            return {'CANCELLED'}
         for i, b in enumerate(group.bones):
             if b.bone_name == self.bone_name:
                 group.bones.remove(i)
@@ -936,12 +941,7 @@ class RMV2_OT_RemoveGroup(bpy.types.Operator):
 
     def execute(self, context):
         sc = context.scene
-        safe = sanitize_name(sc.rmv2_armature)
-                
-        if not hasattr(context.scene, f"rmv2_groups_{safe}"):
-            setattr(bpy.types.Scene, f"rmv2_groups_{safe}", bpy.props.CollectionProperty(type=RMV2_Group))
-        
-        groups = getattr(sc, f"rmv2_groups_{safe}")
+        groups = getattr(sc, f"rmv2_groups_{sanitize_name(sc.rmv2_armature)}", [])
         for i, g in enumerate(groups):
             if g.group_name == self.group_name:
                 groups.remove(i)
@@ -1193,6 +1193,9 @@ class RMV2_OT_AddCustomProperty(bpy.types.Operator):
         if not pb:
             self.report({'ERROR'}, "Bone not found")
             return {'CANCELLED'}
+        if not self.prop_name.strip():
+            self.report({'ERROR'}, "Property name cannot be empty")
+            return {'CANCELLED'}
 
         if self.prop_type == 'FLOAT':
             pb[self.prop_name] = self.default_float
@@ -1236,19 +1239,9 @@ class RMV2_OT_add_bone_to_collection(bpy.types.Operator):
 
     def execute(self, context):
         scene     = context.scene
-        arm_name  = scene.rmv2_armature
-        safe      = sanitize_name(arm_name)
-        prop_name = f"rmv2_groups_{safe}"
 
         # 1) Ensure the Scene has that dynamic group-list
-        if not hasattr(scene, prop_name):
-            setattr(
-                bpy.types.Scene,
-                prop_name,
-                CollectionProperty(type=RMV2_Group)
-            )
-
-        groups = getattr(scene, prop_name)
+        groups = getattr(scene, ensure_group_prop(scene.rmv2_armature))
 
         # 2) Figure out which group to target
         if self.create_new:
@@ -1258,6 +1251,9 @@ class RMV2_OT_add_bone_to_collection(bpy.types.Operator):
                 return {'CANCELLED'}
         else:
             name = self.group_enum
+            if not name:
+                self.report({'ERROR'}, "No collection to add to; create a new one")
+                return {'CANCELLED'}
 
         # 3) Find or make that group
         group = next((g for g in groups if g.group_name == name), None)
@@ -1295,13 +1291,14 @@ class RMV2_OT_SyncViewportSelection(bpy.types.Operator):
         if not arm or arm.type != 'ARMATURE':
             return
 
-        selected = {b.name for b in arm.pose.bones if b.bone.select}
+        selected = {pb.name for pb in arm.pose.bones if bone_is_selected(pb)}
 
-        for group in context.scene.rmv2_groups:
+        groups = getattr(context.scene, f"rmv2_groups_{sanitize_name(arm.name)}", [])
+        for group in groups:
             for bone in group.bones:
                 bone.is_selected = bone.bone_name in selected
 
-        context.area.tag_redraw()
+        tag_addon_panels(context)
 
     def execute(self, context):
         wm = context.window_manager
@@ -1312,6 +1309,7 @@ class RMV2_OT_SyncViewportSelection(bpy.types.Operator):
     def cancel(self, context):
         if self._timer:
             context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
             
 class RMV2_OT_ToggleGroupFoldout(bpy.types.Operator):
     bl_idname = "rmv2.toggle_group_foldout"
@@ -1333,167 +1331,6 @@ class RMV2_OT_ToggleGroupFoldout(bpy.types.Operator):
             return {'FINISHED'}
         return {'CANCELLED'}
 
-class RMV2_PT_Main(bpy.types.Panel):
-    bl_label = "Bone Mancer: Rig Central"
-    bl_idname = "RMV2_PT_Main"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "Bonemancer"
-
-    def _draw_bone_buttons(self, row, group_name, bone_name):
-
-        # Hide/Unhide
-        obj = bpy.context.object
-        pbone = obj.pose.bones.get(bone_name) if obj else None
-        hidden = is_hidden(pbone) if pbone else False
-        icon = 'HIDE_ON' if hidden else 'HIDE_OFF'
-        tog = row.operator("rmv2.toggle_bone", text="", icon=icon, depress=hidden)
-        tog.bone_name = bone_name
-
-        # Rename
-        edit = row.operator("rmv2.rename_bone", text="", icon='FILE_TEXT')
-        edit.group_name = group_name
-        edit.bone_name  = bone_name
-
-        # Remove
-        rem = row.operator("rmv2.remove_bone", text="", icon='X')
-        rem.group_name = group_name
-        rem.bone_name  = bone_name
-
-    def draw(self, context):
-        layout = self.layout
-        scene  = context.scene
-
-        # Top bar: pick Armature, Bone, then Add-to-Group
-        layout.prop(scene, "rmv2_armature", text="Armature")
-
-    
-        box = layout.box()
-        box.label(text="Bone Picker")
-
-
-        box.template_list(
-            "RMV_2_BONE_UL_selection_list",   # UIList class name
-            "",                               # list_id (unused)
-            scene.rmv2_rmgr_settings,         # settings PG holds the collection
-            "bone_selection",                 # CollectionProperty name
-            scene.rmv2_rmgr_settings,         # settings PG for the index
-            "bone_selection_index",           # IntProperty name
-            rows=6
-        )
-
-        layout.separator()
-
-        # Validate armature
-        arm_name  = scene.rmv2_armature
-        obj       = bpy.data.objects.get(arm_name)
-        bone_prop = scene.rmv2_bone
-
-        if not obj or obj.type != 'ARMATURE':
-            layout.label(text="Select an armature", icon='ERROR')
-            return
-
-        # Fetch groups stored on the Scene
-        safe_name = sanitize_name(arm_name)
-        groups    = getattr(scene, f"rmv2_groups_{safe_name}", [])
-
-        if not groups:
-            layout.label(text="(no collections)", icon='INFO')
-            return
-
-        # Draw each collection
-        for grp in groups:
-   
-            box = layout.box()
-            header = box.row(align=True)
-        
-            # Foldout toggle icon
-            icon = 'TRIA_DOWN' if grp.show_expanded else 'TRIA_RIGHT'
-            op = header.operator(
-                "rmv2.toggle_group_foldout",
-                text="",
-                icon=icon,
-                emboss=False
-            )
-            op.group_name = grp.group_name
-
-            # Group title and remove-group button
-            header.label(text=grp.group_name, icon='OUTLINER_COLLECTION')
-            remg = header.operator("rmv2.remove_group", text="", icon='TRASH')
-            remg.group_name = grp.group_name
-
-            # Only draw bones if expanded
-            if grp.show_expanded:
-
-                for b in grp.bones:
-                    row = box.row(align=True)
-                    row.label(text=b.bone_name, icon='BONE_DATA')
-                    pb  = obj.pose.bones.get(b.bone_name)
-                    # Highlight if selected in viewport
-
-                    if b.is_selected:
-                        row.operator("rmv2.select_bone", text="", icon='RESTRICT_SELECT_OFF', depress=True).bone_name = b.bone_name
-                    else:
-                        row.operator("rmv2.select_bone", text="", icon='RESTRICT_SELECT_OFF')
-                        bone_name = b.bone_name
-
-                    row.prop(
-                    b, "show_custom_props",
-                    icon = 'RNA',text="")
-                    icon_c = 'CONSTRAINT_BONE'
-                    togc   = row.operator(
-                        "rmv2.toggle_constraints_bone",
-                        text="",
-                    icon=icon_c,
-                        depress=b.show_constraints)
-                    togc.bone_name = b.bone_name
-                    self._draw_bone_buttons(row, grp.group_name, b.bone_name)
-                     # CUSTOM PROPLS FOLDOUT
-                    if b.show_custom_props and pb:
-                        cbox = box.box().column()
-                        cbox.label(text="Custom Props:", icon='RNA')
-                        # Liveâ€draw every custom property in its native widget
-                        for key in pb.keys():
-                            if key != 'constraint_active_index':
-                                print(key)
-                                # 1) Arrays â†’ grouped fields
-                                val = pb[key]
-                                if isinstance(val, (list, tuple)):
-                                    cbox.label(text=key)
-                                    row = cbox.row(align=True)
-                                    for i in range(len(val)):
-                                        row.prop(pb, f'["{key}"][{i}]', text=str(i))
-                                    continue
-
-                                # 2â€“4) All other types â†’ let Blender pick the widget
-                                row = cbox.row()
-                                row.prop(pb, f'["{key}"]', text=key)
-
-                        # â€œAdd Propertyâ€ button stays the same
-                        op = cbox.operator("rmv2.add_custom_prop", text="Add Property", icon='ADD')
-                        op.bone_name = b.bone_name
-
-                    # Expanded Constraints
-                    if b.show_constraints and pb:
-                        cbox = box.box().column()
-                        cbox.label(
-                            text=f"Constraints on {b.bone_name}",
-                            icon='CONSTRAINT_BONE'
-                            )
-
-                        if not pb.constraints:
-                            cbox.label(text="(no constraints)", icon='INFO')
-                        else:
-                             cbox.template_list(
-                                "RMV2_UL_ConstraintList",
-                                "",                        # custom list_id
-                                pb,                        # data: PoseBone
-                                "constraints",             # its CollectionProperty
-                                b,                         # active_data: RMV2_Bone PG
-                                "constraint_index",        # its index IntProperty
-                                rows=4
-                            )
-                        
 class RMV2_PT_ArmaturePicker(bpy.types.Panel):
     bl_label = "Bonemancer Rig Central"
     bl_idname = "RMV2_PT_ArmaturePicker"
@@ -1538,10 +1375,10 @@ class RMV2_PT_Collections(bpy.types.Panel):
      
     def _draw_bone_buttons(self, row, group_name, bone_name):
 
-            # Hide/Unhide
-            obj = bpy.context.object
-            pbone = obj.pose.bones.get(bone_name) if obj else None
-            hidden = is_hidden(pbone) if pbone else False
+            # Hide/Unhide (state of the armature picked in the panel)
+            obj = bpy.data.objects.get(bpy.context.scene.rmv2_armature)
+            pbone = obj.pose.bones.get(bone_name) if obj and obj.type == 'ARMATURE' else None
+            hidden = is_hidden(pbone)
             icon = 'HIDE_ON' if hidden else 'HIDE_OFF'
             tog = row.operator("rmv2.toggle_bone", text="", icon=icon, depress=hidden)
             tog.bone_name = bone_name
@@ -1556,17 +1393,10 @@ class RMV2_PT_Collections(bpy.types.Panel):
             rem.group_name = group_name
             rem.bone_name  = bone_name
 
-            def draw(self, context):
-                layout = self.layout
-                scene  = context.scene
-
-                # Top bar: pick Armature, Bone, then Add-to-Group
-                layout.prop(scene, "rmv2_armature", text="Armature")
-        
     def draw(self, context):
         armatures = [obj for obj in bpy.context.scene.objects if obj.type =='ARMATURE']
         if not armatures:
-             self.layout.label(text="âš ï¸ Add or select an armature", icon='ERROR')
+             self.layout.label(text="Add or select an armature", icon='ERROR')
         else:   
             layout   = self.layout
             scene    = context.scene
@@ -1641,11 +1471,10 @@ class RMV2_PT_Collections(bpy.types.Panel):
                         if b.show_custom_props and pb:
                             cbox = box.box().column()
                             cbox.label(text="Custom Props:", icon='RNA')
-                            # Liveâ€draw every custom property in its native widget
+                            # Live‐draw every custom property in its native widget
                             for key in pb.keys():
                                 if key != 'constraint_active_index':
-                                    print(key)
-                                    # 1) Arrays â†’ grouped fields
+                                    # 1) Arrays → grouped fields
                                     val = pb[key]
                                     if isinstance(val, (list, tuple)):
                                         cbox.label(text=key)
@@ -1654,11 +1483,11 @@ class RMV2_PT_Collections(bpy.types.Panel):
                                             row.prop(pb, f'["{key}"][{i}]', text=str(i))
                                         continue
 
-                                    # 2â€“4) All other types â†’ let Blender pick the widget
+                                    # 2–4) All other types → let Blender pick the widget
                                     row = cbox.row()
                                     row.prop(pb, f'["{key}"]', text=key)
 
-                            # â€œAdd Propertyâ€ button stays the same
+                            # “Add Property” button stays the same
                             op = cbox.operator("rmv2.add_custom_prop", text="Add Property", icon='ADD')
                             op.bone_name = b.bone_name
 
@@ -1770,16 +1599,14 @@ class RMV_2_BONE_UL_selection_list(bpy.types.UIList):
 
         op = row.operator(
             "rmv2.rename_bone",                 #     Operator to execute
-            text="",                                  #     No textâ€”just an icon
-            icon='FILE_TEXT'                               #     Info icon for â€œrelationsâ€
+            text="",                                  #     No text—just an icon
+            icon='FILE_TEXT'                               #     Info icon for “relations”
         )
-        op.bone_name = item.name
-        #"rmv2.rename_bone"
         op.bone_name = item.name
         op = row.operator(
             "bi.show_bone_relations",                 #     Operator to execute
-            text="",                                  #     No textâ€”just an icon
-            icon='INFO'                               #     Info icon for â€œrelationsâ€
+            text="",                                  #     No text—just an icon
+            icon='INFO'                               #     Info icon for “relations”
         )
         op.bone_name = item.name   
 
@@ -1799,7 +1626,8 @@ class RMV2_UL_CustomPropsList(bpy.types.UIList):
         row.prop(pb, f'["{item.name}"]', text="", slider=True)
         
 
-def viewport_armature_sync(depsgraph):
+@persistent
+def viewport_armature_sync(scene, depsgraph=None):
     """
     Called after every depsgraph update. If the active object
     is an armature and it's different than last time, push it
@@ -1886,14 +1714,7 @@ def init_armature_groups(dummy):
     """
     for obj in bpy.data.objects:
         if obj.type == 'ARMATURE':
-            key = f"rmv2_groups_{sanitize_name(obj.name)}"
-            if not hasattr(bpy.types.Scene, key):
-                setattr(
-                    bpy.types.Scene,
-                    key,
-                    CollectionProperty(type=RMV2_Group),
-                )
-                dynamic_props.append(key)
+            ensure_group_prop(obj.name)
 
 def safely_register_handlers(handlers):
     for handle in handlers:
@@ -1908,7 +1729,7 @@ def on_armature_change(self, context):
     - From viewport: refresh lists only (no mode/selection changes).
     - From dropdown: also switch to Pose Mode and activate the armature.
     """
-    global _armature_change_from_viewport
+    global _armature_change_from_viewport, _last_selected_armature
 
     scene = context.scene
     arm_name = scene.rmv2_armature
@@ -1916,7 +1737,11 @@ def on_armature_change(self, context):
 
     # Bail if invalid
     if not arm_obj or arm_obj.type != 'ARMATURE':
+        _armature_change_from_viewport = False
         return
+
+    _last_selected_armature = arm_name
+    ensure_group_prop(arm_name)
 
     if _armature_change_from_viewport:
         # Viewport selection: do NOT alter modes; just refresh addon state.
@@ -1963,13 +1788,25 @@ def sync_armature_entry(scene, arm_name):
 
 
 
+@persistent
 def on_load_post(dummy):
-    global previous_armatures
-    previous_armatures = {obj.name for obj in bpy.context.scene.objects if obj.type == 'ARMATURE'}
+    global previous_armatures, _last_selected_armature
+    previous_armatures = {obj.name for obj in bpy.data.objects if obj.type == 'ARMATURE'}
+    _last_selected_armature = None
 
-                 
+
+load_post_handlers = [on_load_post, init_armature_groups]
+
+
+def _deferred_init():
+    # bpy.data is restricted while the add-on registers; finish setup on the
+    # first tick so groups saved in an already-open file show up immediately.
+    init_armature_groups(None)
+    on_load_post(None)
+    return None
+
+
 def register():
-    bpy.app.handlers.load_post.append(on_load_post)
     # 1) Register all UI classes
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -1997,7 +1834,7 @@ def register():
     )
     safe_register_prop(
         bpy.types.Scene, "rmv2_active_bone_name",
-        StringProperty(update=update_custom_props_list)
+        StringProperty()
     )
 
     # 3) PointerProperty for settings & Armature enum + update
@@ -2022,33 +1859,29 @@ def register():
     bpy.types.Scene.rmv2_armature_groups = CollectionProperty(type=ArmatureGroup)
     bpy.types.Scene.rmv2_active_armature = StringProperty(update=on_armature_change)
 
-
-    #clears depsgraph
-    bpy.app.handlers.depsgraph_update_post.clear()
-    
-    # 4) Handlers for depsgraph updates
+    # 4) Handlers for depsgraph updates (only ours; never clear other add-ons')
     safely_register_handlers(safe_handlers)
 
-    # 5) Deferred init of dynamic armature-group props
-    bpy.app.handlers.load_post.append(init_armature_groups)
+    # 5) Load handlers + deferred init of dynamic armature-group props
+    for handle in load_post_handlers:
+        if handle not in bpy.app.handlers.load_post:
+            bpy.app.handlers.load_post.append(handle)
+    bpy.app.timers.register(_deferred_init, first_interval=0.0)
 
 def unregister():
-    # 1) Remove load_post handler
-    if init_armature_groups in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.remove(init_armature_groups)
+    # 1) Remove handlers and pending timer
+    remove_handlers(safe_handlers + load_post_handlers)
+    if bpy.app.timers.is_registered(_deferred_init):
+        bpy.app.timers.unregister(_deferred_init)
 
-    # 2) Remove depsgraph handlers
-    remove_handlers(safe_handlers)
-    bpy.app.handlers.depsgraph_update_post.clear()
-
-    # 3) Unregister UI classes
+    # 2) Unregister UI classes
     for cls in reversed(classes):
         try:
             bpy.utils.unregister_class(cls)
         except Exception as e:
             print(f"Failed to unregister class {cls.__name__}: {e}")
 
-    # 4) Unregister static properties
+    # 3) Unregister static properties
     static_props = [
         "rmv2_armature",
         "rmv2_bone",
@@ -2057,24 +1890,16 @@ def unregister():
         "rmv2_groups",
         "rmv2_index",
         "rmv2_active_bone_name",
+        "rmv2_rmgr_settings",
+        "rmv2_bone_list",
+        "rmv2_shape_key_scanner",
+        "rmv2_armature_groups",
+        "rmv2_active_armature",
     ]
-    
     unregister_properties(static_props)
 
-    # 5) Delete direct setattr props
-    del bpy.types.Scene.rmv2_rmgr_settings
-    del bpy.types.Scene.rmv2_bone_list
-    del bpy.types.Scene.rmv2_shape_key_scanner
-
-    # 6) Clean up dynamic props created by init_armature_groups
-    for key in dynamic_props:
-        try:
-            delattr(bpy.types.Scene, key)
-        except AttributeError:
-            pass
-    dynamic_props.clear()
-
-    print("âœ… Bonemancer unregistered cleanly.")
+    # 4) Clean up dynamic per-armature group props
+    cleanup_dynamic_props()
 
 if __name__ == "__main__":
     register()
