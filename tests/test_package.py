@@ -33,8 +33,9 @@ def manifest():
 
 def manifest_fields():
     m = manifest()
-    got = (m["id"], m["version"], m["blender_version_min"], m["license"], len(m["tagline"]) <= 64)
-    return (got == ("bonemancer", "1.0.0", "4.2.0", ["SPDX:GPL-3.0-or-later"], True), got)
+    got = (m["id"], m["version"], m["blender_version_min"], m["license"], len(m["tagline"]) <= 64, m.get("website"))
+    return (got == ("bonemancer", "1.0.0", "4.2.0", ["SPDX:GPL-3.0-or-later"], True,
+                    "https://github.com/Blaxine/BoneMancer"), got)
 check("manifest fields", manifest_fields)
 
 

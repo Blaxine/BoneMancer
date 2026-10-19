@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Bone Mancer doesn't work as expected
+labels: [bug]
+body:
+  - type: input
+    id: blender-version
+    attributes:
+      label: Blender version
+      description: Help > About Blender, e.g. 4.5.4 LTS
+    validations:
+      required: true
+  - type: input
+    id: bonemancer-version
+    attributes:
+      label: Bone Mancer version
+      description: Edit > Preferences > Add-ons > Bone Mancer
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11 / macOS 15 / Ubuntu 24.04
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Pick the rig ...
+        2. Click ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Error messages
+      description: Anything shown in Blender's status bar or Window > Toggle System Console
+      render: text
+  - type: textarea
+    id: sample
+    attributes:
+      label: Sample file
+      description: Drag in a small .blend (zipped) with the rig that shows the problem, if you can share one.
+  - type: checkboxes
+    id: data
+    attributes:
+      label: Data loss
+      options:
+        - label: Bone sets or other data were lost or changed unexpectedly

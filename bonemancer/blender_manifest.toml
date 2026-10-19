@@ -6,6 +6,7 @@ name = "Bone Mancer: Rig Central"
 tagline = "Animator hub for bone sets, props, constraints and shape keys"
 maintainer = "Blaxine"
 type = "add-on"
+website = "https://github.com/Blaxine/BoneMancer"
 
 tags = ["Rigging", "Animation"]
 

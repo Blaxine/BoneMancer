@@ -370,12 +370,12 @@ signed off.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S025 | D | README | What BoneMancer is (control hub), features, install from Extensions / zip, quick start incl. Import, supported versions, support link. | S024 | `README.md` |
-|  | S026 | D | License | GPL-3.0-or-later text. | — | `LICENSE` |
-|  | S027 | D | Bug-report template | Asks for Blender version, BoneMancer version, OS, steps, sample rig. | — | `.github/ISSUE_TEMPLATE/` |
-|  | S028 | D | Manual UI checklist | Click-through for things headless tests can't see: panel layout, dialogs, icons, undo in the UI, viewport sync, empty states. | S024 | `tests/` |
-|  | S029 | F | Finalise manifest | `website` = public GitHub repo URL, final `maintainer`, `version = "1.0.0"`. | S025 | `bonemancer/blender_manifest.toml` |
-|  | S030 | T | Release candidate run | Full runner on 4.2/4.5/latest 5.x + manual checklist; build the zip for upload. | S028, S029 | — |
+| ✅ | S025 | D | README | What BoneMancer is (control hub), features, install from Extensions / zip, quick start incl. Import, supported versions, support link. | S024 | `README.md` |
+| ✅ | S026 | D | License | GPL-3.0-or-later text. | — | `LICENSE` |
+| ✅ | S027 | D | Bug-report template | Asks for Blender version, BoneMancer version, OS, steps, sample rig. | — | `.github/ISSUE_TEMPLATE/` |
+| ✅ | S028 | D | Manual UI checklist | Click-through for things headless tests can't see: panel layout, dialogs, icons, undo in the UI, viewport sync, empty states. | S024 | `tests/` |
+| ✅ | S029 | F | Finalise manifest | `website` = public GitHub repo URL, final `maintainer`, `version = "1.0.0"`. | S025 | `bonemancer/blender_manifest.toml` |
+| 🔶 | S030 | T | Release candidate run | Full runner on 4.2/4.5/latest 5.x + manual checklist; build the zip for upload. **Runner green on 4.5.4 and 5.2.2 and zip built (2026-10-19); 4.2 run and manual checklist pending.** | S028, S029 | — |
 
 ### Dependency graph
 
@@ -420,10 +420,11 @@ S026, S027 (independent)                                                        
 - [x] **Q3 — Resolved.** Identifiers renamed to `bonemancer` before 1.0, with migration. *(Blaxine)*
 - [x] **Q4 — Resolved.** Code moves as-is into `bonemancer/__init__.py`. *(Blaxine)*
 - [x] **Q5 — Resolved.** Runner takes Blender paths on the command line. *(Blaxine)*
-- [ ] **Q6 — Public repository URL.** Which GitHub owner/name hosts the public repo
-  (the manifest `website`)? Deferred until the repo is made public in Slice 6.
+- [x] **Q6 — Resolved.** `website = "https://github.com/Blaxine/BoneMancer"`, the
+  repo's `origin` remote. It must be public before the Extensions submission.
 - [ ] **Q7 — Public maintainer identity.** Name and contact shown as `maintainer`
-  in the manifest (handle "Blaxine" or a real name/email)? Deferred until S029.
+  in the manifest (handle "Blaxine" or a real name/email)? The manifest ships
+  "Blaxine" until decided; the only change needed is that one line.
 - [ ] **Q8 — Icons for Bone Sets.** Keep `OUTLINER_COLLECTION` or switch to an icon
   that doesn't read as a native collection? Deferred until S018 is reviewed in the
   UI via the manual checklist.
@@ -503,3 +504,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
 | 2026-10-19 | Blaxine | Initial plan. |
+| 2026-10-19 | Blaxine | Slices 1–6 implemented and committed. S001/S009 skipped (4.2 download declined); S030 awaits a 4.2 run and the manual checklist. Q6 resolved from the git remote. Rename map records the operator names chosen. |
