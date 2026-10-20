@@ -332,9 +332,9 @@ removed.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S025 | S | Library-defined ignores | Lookup of ignores present on `override_library.reference`; Un-ignore refuses them with a message; `TypeError` net around removal (same pattern as `library_set`). | S020 | `bonemancer/__init__.py` |
-|  | S026 | U | Linked-rig states | Ignore disabled with tooltip on linked rigs; library-defined ignores shown read-only. | S025 | `bonemancer/__init__.py` |
-|  | S027 | T | Extend library suite: rig check | Library rig carries a broken constraint and one ignore; linked: check lists, Ignore refused, Select refused; override: new ignore persists across reload, library ignore's Un-ignore refused without traceback. | S026 | `tests/test_library.py` |
+| ✅ | S025 | S | Library-defined ignores | Lookup of ignores present on `override_library.reference`; Un-ignore refuses them with a message; `TypeError` net around removal (same pattern as `library_set`). | S020 | `bonemancer/__init__.py` |
+| ✅ | S026 | U | Linked-rig states | Ignore disabled with tooltip on linked rigs; library-defined ignores shown read-only. | S025 | `bonemancer/__init__.py` |
+| ✅ | S027 | T | Extend library suite: rig check | Library rig carries a broken constraint and one ignore; linked: check lists, Ignore refused, Select refused; override: new ignore persists across reload, library ignore's Un-ignore refused without traceback. | S026 | `tests/test_library.py` |
 
 ### Slice 8 — Re-verification of listed issues
 

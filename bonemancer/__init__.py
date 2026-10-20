@@ -1935,6 +1935,17 @@ def is_ignored(rig, issue):
     return ignore_index(rig, issue) >= 0
 
 
+def library_ignore(arm_obj, issue):
+    """True if issue is ignored in the library file an overridden rig comes from."""
+    override = arm_obj.override_library if arm_obj else None
+    reference = override.reference if override else None
+    return reference is not None and is_ignored(reference, issue)
+
+
+LINKED_IGNORE_MESSAGE = "Rig is linked from a library; make a library override to ignore issues"
+LIBRARY_IGNORE_MESSAGE = "Ignored in the rig's library file; stop ignoring it there"
+
+
 def visible_issues(scene):
     """The issues that aren't ignored on the picked rig."""
     rig = get_rig(scene)
@@ -2022,13 +2033,18 @@ class BONEMANCER_OT_ignore_issue(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     index: IntProperty()
 
+    @classmethod
+    def description(cls, context, properties):
+        rig = get_rig(context.scene)
+        return LINKED_IGNORE_MESSAGE if rig and not rig_is_editable(rig) else cls.bl_description
+
     def execute(self, context):
         rig = get_rig(context.scene)
         issue = get_issue(context.scene, self.index)
         if not rig or not issue:
             return {'CANCELLED'}
         if not rig_is_editable(rig):
-            self.report({'ERROR'}, "Rig is linked from a library; make a library override to ignore issues")
+            self.report({'ERROR'}, LINKED_IGNORE_MESSAGE)
             return {'CANCELLED'}
         if not is_ignored(rig, issue):
             entry = rig.bonemancer_ignored_issues.add()
@@ -2046,6 +2062,16 @@ class BONEMANCER_OT_unignore_issue(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     index: IntProperty()
 
+    @classmethod
+    def description(cls, context, properties):
+        rig = get_rig(context.scene)
+        issue = get_issue(context.scene, properties.index)
+        if rig and not rig_is_editable(rig):
+            return LINKED_IGNORE_MESSAGE
+        if issue and library_ignore(rig, issue):
+            return LIBRARY_IGNORE_MESSAGE
+        return cls.bl_description
+
     def execute(self, context):
         rig = get_rig(context.scene)
         issue = get_issue(context.scene, self.index)
@@ -2053,9 +2079,17 @@ class BONEMANCER_OT_unignore_issue(bpy.types.Operator):
         if found < 0:
             return {'CANCELLED'}
         if not rig_is_editable(rig):
-            self.report({'ERROR'}, "Rig is linked from a library; make a library override to change ignored issues")
+            self.report({'ERROR'}, LINKED_IGNORE_MESSAGE)
             return {'CANCELLED'}
-        rig.bonemancer_ignored_issues.remove(found)
+        if library_ignore(rig, issue):
+            self.report({'ERROR'}, LIBRARY_IGNORE_MESSAGE)
+            return {'CANCELLED'}
+        try:
+            rig.bonemancer_ignored_issues.remove(found)
+        except TypeError:
+            # Blender refuses to remove items an override inherited
+            self.report({'ERROR'}, "This ignore can't be removed from an overridden rig")
+            return {'CANCELLED'}
         tag_addon_panels(context)
         return {'FINISHED'}
 
@@ -2101,7 +2135,7 @@ class BONEMANCER_UL_rig_issues(bpy.types.UIList):
         op = row.operator("bonemancer.explain_issue", text="", icon='INFO')
         op.index = index
         toggle = row.row(align=True)
-        toggle.enabled = rig_is_editable(rig)
+        toggle.enabled = rig_is_editable(rig) and not (ignored and library_ignore(rig, item))
         if ignored:
             op = toggle.operator("bonemancer.unignore_issue", text="", icon='HIDE_ON', depress=True)
         else:
