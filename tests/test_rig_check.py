@@ -15,6 +15,8 @@ sc = bpy.context.scene
 
 
 def pick(obj):
+    if obj and bpy.context.view_layer.objects.get(obj.name) == obj:
+        bpy.context.view_layer.objects.active = obj    # the handler follows the active armature
     mod._armature_change_from_viewport = True
     try:
         sc.bonemancer_rig = obj
@@ -446,6 +448,121 @@ def no_skinned_mesh():
     run()
     return (issues("deform_unweighted") + issues("nondeform_weighted") == [], issues())
 check("a rig with no skinned mesh gets no weight issues", no_skinned_mesh)
+
+
+# --- Setup mistakes -------------------------------------------------------
+
+def transform(scale=(1, 1, 1), rotation=(0, 0, 0)):
+    rig = fresh(("root",))
+    rig.scale = scale
+    rig.rotation_euler = rotation
+    run()
+    return [(i.check, i.object_name, i.message) for i in sc.bonemancer_rig_check.issues if i.check == "rig_transform"]
+
+
+check("unapplied scale is listed",
+      lambda: (transform(scale=(0.5, 0.5, 0.5)) == [("rig_transform", "Rig", "Rig: scale (0.5, 0.5, 0.5) not applied")],
+               transform(scale=(0.5, 0.5, 0.5))))
+check("unapplied rotation is listed",
+      lambda: (transform(rotation=(1.5708, 0, 0)) == [("rig_transform", "Rig", "Rig: rotation not applied")],
+               transform(rotation=(1.5708, 0, 0))))
+check("rotation and scale together are one issue",
+      lambda: ([m for _c, _o, m in transform(scale=(2, 2, 2), rotation=(0, 0, 3.0))]
+               == ["Rig: rotation and scale (2, 2, 2) not applied"], transform(scale=(2, 2, 2), rotation=(0, 0, 3.0))))
+check("an applied rig is not listed (a full turn counts as applied)",
+      lambda: (transform(rotation=(0, 0, 2 * 3.141592653589793)) == [], transform(rotation=(0, 0, 6.283185307179586))))
+
+
+def parented_mesh(rig, name, parent_type='OBJECT', modifier_object="none"):
+    """A mesh parented to rig; modifier_object: 'none' = no modifier, None = modifier without object."""
+    obj = skinned_mesh(rig, name)
+    obj.modifiers.clear()
+    obj.parent = rig
+    obj.parent_type = parent_type
+    if modifier_object != "none":
+        obj.modifiers.new("Armature", 'ARMATURE').object = modifier_object
+    return obj
+
+
+def setup_issues():
+    return [(i.check, i.detail, i.message) for i in sc.bonemancer_rig_check.issues
+            if i.check in ("mesh_no_modifier", "modifier_wrong_rig")]
+
+
+def mesh_without_modifier():
+    rig = fresh(("root",))
+    parented_mesh(rig, "Bare")
+    parented_mesh(rig, "Fine", modifier_object=rig)
+    run()
+    got = setup_issues()
+    return (got == [("mesh_no_modifier", "Bare", "Bare: parented to the rig without an Armature modifier")], got)
+check("a mesh parented without an Armature modifier is listed", mesh_without_modifier)
+
+
+def modifier_problems():
+    rig = fresh(("root",))
+    other = make_arm("Other")
+    pick(rig)
+    parented_mesh(rig, "Empty", modifier_object=None)
+    parented_mesh(rig, "Elsewhere", modifier_object=other)
+    layered = parented_mesh(rig, "Layered", modifier_object=other)
+    layered.modifiers.new("Armature.001", 'ARMATURE').object = rig      # one of them is this rig: fine
+    parented_mesh(rig, "ArmParent", parent_type='ARMATURE', modifier_object=other)
+    run()
+    got = setup_issues()
+    return (got == [
+        ("modifier_wrong_rig", "Empty:Armature", "Empty: Armature modifier 'Armature' has no rig set"),
+        ("modifier_wrong_rig", "Elsewhere:Armature", "Elsewhere: Armature modifier 'Armature' uses 'Other' instead of this rig"),
+        ("modifier_wrong_rig", "ArmParent:Armature", "ArmParent: Armature modifier 'Armature' uses 'Other' instead of this rig"),
+    ], got)
+check("Armature modifiers with no rig or another rig are listed", modifier_problems)
+
+
+def bone_parented_mesh():
+    rig = fresh(("root",))
+    prop = parented_mesh(rig, "Sword", parent_type='BONE')
+    prop.parent_bone = "root"
+    run()
+    return (setup_issues() == [], setup_issues())
+check("a bone-parented mesh is never a setup mistake", bone_parented_mesh)
+
+
+def select_object_issue():
+    rig = fresh(("root",))
+    bare = parented_mesh(rig, "Bare")
+    run()
+    index = next(i for i, it in enumerate(sc.bonemancer_rig_check.issues) if it.check == "mesh_no_modifier")
+    r_obj = bpy.ops.bonemancer.select_issue(index=index)
+    selected = (bpy.context.view_layer.objects.active == bare, bare.select_get())
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='POSE')
+    r_pose = bpy.ops.bonemancer.select_issue(index=index)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    got = (r_obj, selected, r_pose)
+    return (got == ({'FINISHED'}, (True, True), {'CANCELLED'}), got)
+check("Select picks an object issue's mesh in Object Mode and refuses elsewhere", select_object_issue)
+
+
+def pick_switch_during_check():
+    broken = fresh(("root",))
+    broken.pose.bones["root"].constraints.new('COPY_ROTATION')
+    clean = make_arm("Clean", ("root",))
+    bpy.context.view_layer.objects.active = clean      # the viewport's armature...
+    mod._armature_change_from_viewport = True
+    sc.bonemancer_rig = broken                         # ...differs from the pick
+    mod._armature_change_from_viewport = False
+    run()
+    got = (sc.bonemancer_rig.name, issues(), sc.bonemancer_rig_check.has_run)
+    return (got == ("Clean", [], True), got)
+check("results always describe the rig that ends up picked", pick_switch_during_check)
+
+
+def icons_exist():
+    valid = {i.identifier for i in bpy.types.UILayout.bl_rna.functions["label"].parameters["icon"].enum_items}
+    used = {icon for _h, icon, _l in mod.RIG_CHECKS.values()} | {'VIEWZOOM', 'CHECKMARK', 'SCRIPT', 'INFO',
+                                                                  'RESTRICT_SELECT_OFF', 'ERROR'}
+    return (used <= valid, sorted(used - valid))
+check("every Rig Check icon exists in this Blender", icons_exist)
 
 
 check("unregister()", mod.unregister)

@@ -2,6 +2,7 @@
 """Bone Mancer: Rig Central. Animator control hub for bone sets, custom properties, constraints and shape keys."""
 
 import bpy
+import math
 import re
 from bpy.app.handlers import persistent
 from bpy.props import StringProperty, IntProperty,FloatProperty,BoolProperty, CollectionProperty, EnumProperty, PointerProperty
@@ -1596,7 +1597,32 @@ RIG_CHECKS = {
          "Fix: turn on Deform in Bone Properties, or delete the bone's vertex",
          "group from the mesh if the weights are left over."),
     ),
+    'rig_transform': (
+        "Unapplied rig transform", 'OBJECT_DATA',
+        ("The rig object is rotated or scaled. Constraints, IK and physics can",
+         "act oddly, and exporters and retargeting expect a scale of 1.",
+         "Fix: in Object Mode select the rig and its meshes, then",
+         "Object > Apply > All Transforms. On an animated rig this changes",
+         "how the existing animation plays back."),
+    ),
+    'mesh_no_modifier': (
+        "Parented without an Armature modifier", 'MODIFIER',
+        ("This mesh is parented to the rig but has no Armature modifier, so it",
+         "follows the rig as a whole but doesn't bend with the bones.",
+         "Fix: select the mesh, then the rig, and use Parent > With Automatic",
+         "Weights, or add an Armature modifier that uses this rig."),
+    ),
+    'modifier_wrong_rig': (
+        "Armature modifier on another rig", 'MOD_ARMATURE',
+        ("This mesh is parented to this rig, but its Armature modifier has no",
+         "rig set or uses a different one, so posing these bones doesn't bend it.",
+         "Fix: in the mesh's Modifier Properties, set the Armature modifier's",
+         "Object to this rig."),
+    ),
 }
+
+# Tolerance for "the rig's rotation and scale are applied"
+TRANSFORM_EPSILON = 1e-4
 
 # Shared between the checks of one run (e.g. both weight checks read the
 # same weights); emptied at the start of every run.
@@ -1775,6 +1801,39 @@ def find_driver_issues(context, rig):
             yield bone, detail, message, select_obj.name
 
 
+def find_unapplied_transform(context, rig):
+    _loc, rot, scale = rig.matrix_basis.decompose()
+    angle = rot.angle
+    rotated = min(angle, 2 * math.pi - angle) > TRANSFORM_EPSILON
+    scaled = any(abs(s - 1.0) > TRANSFORM_EPSILON for s in scale)
+    if rotated or scaled:
+        parts = [part for part, on in (("rotation", rotated),
+                                       (f"scale ({scale.x:.3g}, {scale.y:.3g}, {scale.z:.3g})", scaled)) if on]
+        yield "", "", f"{rig.name}: {' and '.join(parts)} not applied", rig.name
+
+
+def meshes_parented_to(scene, rig):
+    for obj in scene.objects:
+        if obj.type == 'MESH' and obj.parent == rig and obj.parent_type in {'OBJECT', 'ARMATURE'}:
+            yield obj
+
+
+def find_meshes_without_modifier(context, rig):
+    for obj in meshes_parented_to(context.scene, rig):
+        if obj.parent_type == 'OBJECT' and not any(m.type == 'ARMATURE' for m in obj.modifiers):
+            yield "", obj.name, f"{obj.name}: parented to the rig without an Armature modifier", obj.name
+
+
+def find_modifiers_on_other_rigs(context, rig):
+    for obj in meshes_parented_to(context.scene, rig):
+        mods = [m for m in obj.modifiers if m.type == 'ARMATURE']
+        if not mods or any(m.object == rig for m in mods):
+            continue
+        for m in mods:
+            problem = f"uses '{m.object.name}' instead of this rig" if m.object else "has no rig set"
+            yield "", f"{obj.name}:{m.name}", f"{obj.name}: Armature modifier '{m.name}' {problem}", obj.name
+
+
 def refresh_evaluation(context, rig):
     """Re-evaluate everything the checks read: validity flags only update on evaluation."""
     for owner, _obj in driver_owners(context.scene, rig):
@@ -1790,6 +1849,9 @@ RIG_CHECK_FINDERS = [
     ('unpaired', find_unpaired_bones),
     ('deform_unweighted', find_unweighted_deform_bones),
     ('nondeform_weighted', find_weighted_nondeform_bones),
+    ('rig_transform', find_unapplied_transform),
+    ('mesh_no_modifier', find_meshes_without_modifier),
+    ('modifier_wrong_rig', find_modifiers_on_other_rigs),
 ]
 
 
@@ -1820,11 +1882,17 @@ def clear_rig_check(scene):
 
 def run_rig_check(context, rig):
     """Replace the scene's results with a fresh check of rig; returns the issue count."""
+    _check_cache.clear()
+    refresh_evaluation(context, rig)
+    # The evaluation runs the depsgraph handler, which may have picked the
+    # newly active armature (and cleared the results); check that one.
+    current = get_rig(context.scene)
+    if current is not None and current != rig:
+        rig = current
+        refresh_evaluation(context, rig)
     results = context.scene.bonemancer_rig_check
     results.issues.clear()
     results.python_drivers = 0
-    _check_cache.clear()
-    refresh_evaluation(context, rig)
     for check_id, finder in RIG_CHECK_FINDERS:
         for bone, detail, message, object_name in finder(context, rig):
             issue = results.issues.add()

@@ -89,9 +89,10 @@ riggers from beginner to hobbyist, and at animators receiving rigs.
   weight in a skinned mesh.
 - **Setup checks**: `rig_transform` = the rig's `matrix_basis` rotation/scale part
   differs from identity beyond 1e-4; `mesh_no_modifier` = a mesh with
-  `parent_type == 'OBJECT'` under the rig and no Armature modifier targeting it;
-  `modifier_wrong_rig` = a mesh parented to the rig whose Armature modifier has no
-  object or another object. Bone-parented meshes are never flagged.
+  `parent_type == 'OBJECT'` under the rig and no Armature modifier at all;
+  `modifier_wrong_rig` = a mesh parented to the rig (object or armature parenting)
+  with Armature modifiers, none of them using the rig: one issue per such modifier
+  (no object, or another object). Bone-parented meshes are never flagged.
 - **Report-only**: no result changes the rig. Actions are Select, Explain, Ignore /
   Un-ignore.
 - **Re-verification**: each drawn row re-tests its issue cheaply (subject exists and
@@ -303,8 +304,8 @@ and a mesh whose modifier targets another rig are each listed.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S017 | S | Setup checks | `rig_transform`, `mesh_no_modifier`, `modifier_wrong_rig` per *Architectural decisions*. | S008 | `bonemancer/__init__.py` |
-|  | S018 | T | Extend rig check suite: setup | Scale 0.5 and rotation 90° → listed, identity → not; object-parented mesh without modifier → listed, with modifier → not; bone-parented mesh → not; modifier with no object / other rig → listed. | S017 | `tests/test_rig_check.py` |
+| ✅ | S017 | S | Setup checks | `rig_transform`, `mesh_no_modifier`, `modifier_wrong_rig` per *Architectural decisions*. | S008 | `bonemancer/__init__.py` |
+| ✅ | S018 | T | Extend rig check suite: setup | Scale 0.5 and rotation 90° → listed, identity → not; object-parented mesh without modifier → listed, with modifier → not; bone-parented mesh → not; modifier with no object / other rig → listed. | S017 | `tests/test_rig_check.py` |
 
 ### Slice 6 — Ignore
 
