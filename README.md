@@ -35,6 +35,13 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
 - **Shape Key Scanner.** Lists the shape keys of every mesh the rig deforms
   (parented to it at any depth, or with an Armature modifier on it), with
   sliders and a keyframe toggle for the current frame.
+- **Rig Check.** One click lists what's wrong with the rig: constraints with
+  no target, drivers that can't evaluate, left/right bones with no partner,
+  deform bones without weights (and weighted bones with Deform off), and setup
+  mistakes such as an unapplied rig scale or a mesh parented without an
+  Armature modifier. Each result selects its bone or object and explains why
+  it matters and how to fix it; nothing is changed for you. Results you don't
+  care about can be ignored per rig, and fixed ones grey out as you go.
 - **Library overrides.** Bone sets can be edited on an overridden rig. Renames
   and new custom properties are refused there, because Blender doesn't keep
   them; a rig linked without an override is read-only.
@@ -64,6 +71,9 @@ The panels are in the 3D Viewport sidebar (N), tab **Bonemancer**.
    properties and constraints.
 4. Use the **+** button in the Bone Picker to put any bone into a new or
    existing set.
+5. Open **Rig Check** and click **Check Rig** to find broken constraints,
+   drivers, weights and setup mistakes; use the info button on a result to
+   see how to fix it.
 
 ## Reporting bugs
 
@@ -83,7 +93,7 @@ blender -b --factory-startup --python tests/run.py -- PATH/TO/blender [PATH/TO/a
 
 Each suite runs in its own background Blender with a temporary user folder,
 so your own Blender configuration is never touched. Add `--only smoke` (or
-`import`, `library`, `migration`, `package`) to run one suite, and
+`import`, `library`, `migration`, `package`, `rig_check`) to run one suite, and
 `--verbose` for full output. Before a release, also go through
 [tests/MANUAL_CHECKLIST.md](tests/MANUAL_CHECKLIST.md) for what headless
 tests can't see.

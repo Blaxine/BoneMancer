@@ -356,12 +356,12 @@ and the manual checklist's Rig Check section is signed off.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S031 | T | Fix wording check | Widen `wrong_set_terms()` to accept "vertex group(s)" and "bone collection(s)" in any case if registered Rig Check strings use them; keep flagging bare "group"/"collection". | S029 | `tests/test_smoke.py` |
-|  | S032 | D | Glossary | Add **Rig Check**, **Issue**, **Ignored issue**, **Skinned mesh** to `reqs/GLOSSARY.md`. | S029 | `reqs/GLOSSARY.md` |
-|  | S033 | D | README and checklist | README feature bullet and quick-start line for Rig Check; donation link; `tests/MANUAL_CHECKLIST.md` Rig Check section (each check, Select/Explain, ignore, linked/override, fixed rows, light/dark theme). | S029 | `README.md`, `tests/MANUAL_CHECKLIST.md` |
-|  | S034 | F | Version 1.1.0 | Manifest `version = "1.1.0"`. | S033 | `bonemancer/blender_manifest.toml` |
-|  | S035 | T | Fix package suite | Expect `1.1.0` and `bonemancer-1.1.0.zip`. | S034 | `tests/test_package.py` |
-|  | S036 | T | Release candidate run | Full runner on 4.5 and 5.2, timing run (S016), manual checklist, build the zip. | S035, S031, S027, S030, S016 | — |
+| ✅ | S031 | T | Fix wording check | Widen `wrong_set_terms()` to accept "vertex group(s)" and "bone collection(s)" in any case if registered Rig Check strings use them; keep flagging bare "group"/"collection". **No change needed: no registered Rig Check string uses them; smoke stays green.** | S029 | `tests/test_smoke.py` |
+| ✅ | S032 | D | Glossary | Add **Rig Check**, **Issue**, **Ignored issue**, **Skinned mesh** to `reqs/GLOSSARY.md`. | S029 | `reqs/GLOSSARY.md` |
+| ✅ | S033 | D | README and checklist | README feature bullet and quick-start line for Rig Check; donation link (**not added: platform undecided, Q9**); `tests/MANUAL_CHECKLIST.md` Rig Check section (each check, Select/Explain, ignore, linked/override, fixed rows, light/dark theme). | S029 | `README.md`, `tests/MANUAL_CHECKLIST.md` |
+| ✅ | S034 | F | Version 1.1.0 | Manifest `version = "1.1.0"`. | S033 | `bonemancer/blender_manifest.toml` |
+| ✅ | S035 | T | Fix package suite | Expect `1.1.0` and `bonemancer-1.1.0.zip`. | S034 | `tests/test_package.py` |
+|  | S036 | T | Release candidate run | Full runner on 4.5 and 5.2, timing run (S016), manual checklist, build the zip. **Runner green on 4.5.4 and 5.2.2, timing done, `bonemancer-1.1.0.zip` built (2026-10-20); manual checklist pending.** | S035, S031, S027, S030, S016 | — |
 
 ### Dependency graph
 
@@ -505,3 +505,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | ---- | ------ | ----------------- |
 | 2026-10-20 | Blaxine | Initial plan. |
 | 2026-10-20 | Blaxine | Slices 1–4 implemented. S016 timing (generated Rigify human, 706 bones / 160 deform, 50,946-vertex skinned mesh, 4 weights per vertex): 0.01–0.03 s on 4.5.4 and 5.2.2; worst case with one empty deform group (full weight pass) 0.07–0.10 s. No issues reported on the generated Rigify rig. Driver notes corrected: Python drivers in untrusted files are skipped (not invalid) and owners need `update_tag()`. |
+| 2026-10-20 | Blaxine | Slices 5–9 implemented. `mesh_no_modifier` narrowed to meshes with no Armature modifier at all (a modifier on another rig is `modifier_wrong_rig` only). Check Rig re-reads the pick after its evaluation, since the depsgraph handler may switch it. S031 needed no change; the donation link waits on Q9; S036 awaits the manual checklist. |

@@ -15,7 +15,7 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
 - [ ] The add-on appears as "Bone Mancer: Rig Central" with the right version,
       tagline and website link.
 - [ ] The **Bonemancer** tab appears in the 3D Viewport sidebar with the
-      Rig Central, Bone Sets and Shape Key Scanner panels.
+      Rig Central, Bone Sets, Rig Check and Shape Key Scanner panels.
 
 ## Rig picker and Bone Picker
 
@@ -57,6 +57,31 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
 - [ ] Rename a bone with F2: its set entry follows.
 - [ ] Ctrl+Z undoes each data change above one step at a time.
 - [ ] Icons read clearly in both the dark and light themes.
+
+## Rig Check
+
+- [ ] With no rig picked the panel says "Select an armature"; Check Rig is
+      disabled.
+- [ ] On a freshly generated Rigify human with a mesh parented With Automatic
+      Weights, Check Rig finishes instantly and shows few or no issues.
+- [ ] Break one of each and Check Rig: clear a constraint's target; make a
+      driver read a property that doesn't exist; delete `hand.R`; turn off
+      Deform on a weighted bone; scale the rig to 0.5; parent a mesh to the rig
+      With Object (no modifier). Each appears once, grouped by check, and the
+      header count matches.
+- [ ] Select on a bone issue selects that bone in Pose Mode; on a mesh issue it
+      selects the mesh in Object Mode and shows a message in other modes.
+- [ ] Explain (info button) opens a readable why / how-to-fix dialog for every
+      kind of issue.
+- [ ] Fix a listed problem by hand: its row greys out with "fixed; check again
+      to update"; Check Rig removes it.
+- [ ] Ignore an issue: it leaves the list and the count; "Show Ignored (1)"
+      brings it back greyed with Stop Ignoring; it stays ignored after F2-renaming
+      its bone and after save / reopen.
+- [ ] Linked rig: issues are listed, the ignore buttons are disabled and their
+      tooltip says to make a library override.
+- [ ] Ctrl+Z undoes Check Rig, Ignore and Stop Ignoring one step at a time.
+- [ ] Rows and icons read clearly in the dark and light themes.
 
 ## Shape Key Scanner
 
