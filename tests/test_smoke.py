@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy
-from helpers import check, finish, load_addon, refused, make_arm, clear_data, FakePanel, MockLayout
+from helpers import check, finish, load_addon, refused, make_arm, clear_data, tmp_dir, FakePanel, MockLayout
 
 
 def foreign_handler(scene, depsgraph=None):
@@ -492,6 +492,45 @@ def p28c():
     bpy.ops.object.mode_set(mode='OBJECT')
     return (got == (1, []), got)
 check("P28c shrinking the bone list moves the highlight without selecting", p28c)
+
+
+def p29():
+    global sc
+    reset(); arm = make_arm("Rig"); pick(arm, from_viewport=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    for o in bpy.context.view_layer.objects:
+        o.select_set(False)
+    arm.select_set(True)
+    bpy.ops.object.delete()   # what X does in the viewport
+    handler_run()
+    picked = sc.bonemancer_rig
+    path = os.path.join(tmp_dir(), "deleted_rig.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=path)
+    bpy.ops.wm.open_mainfile(filepath=path)
+    sc = bpy.context.scene
+    bpy.app.handlers.depsgraph_update_post.append(foreign_handler)   # loading a file drops non-persistent handlers
+    got = (picked, sc.bonemancer_settings.bone_list_owner, "Rig" in bpy.data.objects)
+    return (got == (None, None, False), got)
+check("P29 a rig deleted with X is unpicked and not kept in the saved file", p29)
+
+
+def p29b():
+    reset(); arm = make_arm("Rig"); pick(arm)
+    sc.collection.objects.unlink(arm)
+    handler_run()
+    return (sc.bonemancer_rig is None, sc.bonemancer_rig)
+check("P29b a rig unlinked from the scene is unpicked", p29b)
+
+
+def p30():
+    reset(); arm = make_arm("Rig"); pick(arm)
+    settings = sc.bonemancer_settings
+    settings["last_armature"] = arm      # what 1.0 development builds saved
+    before = arm.users
+    mod.migrate_legacy_data()
+    got = (hasattr(settings, "last_armature"), settings.get("last_armature"), before - arm.users)
+    return (got == (False, None, 1), got)
+check("P30 last_armature is gone, and stale values from dev builds are removed on load", p30)
 
 
 def registered_props():

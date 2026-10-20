@@ -34,6 +34,9 @@ def write_library():
     sc.collection.children.link(coll)
     arm = make_arm("LibRig", ("hip", "knee"), collection=coll)
     arm.data.collections.new("Feet").assign(arm.data.bones["knee"])
+    lib_set = arm.bonemancer_sets.add()   # a set defined in the library file
+    lib_set.name = "Lib"
+    lib_set.bones.add().bone_name = "hip"
     bpy.data.libraries.write(lib_path, {coll})
     clear_data()
     with bpy.data.libraries.load(lib_path, link=True) as (src, dst):
@@ -59,9 +62,16 @@ linked = coll.objects["LibRig"] if coll else None
 
 
 def linked_readonly():
-    pick(linked)
-    got = (mod.rig_is_editable(linked), add("hip"), refused(lambda: bpy.ops.bonemancer.toggle_bone(bone_name="hip")),
-           refused(lambda: bpy.ops.bonemancer.import_bone_collections()))
+    # The rig dropdown only offers rigs linked into the scene itself (an
+    # instanced one is unpicked by the depsgraph handler), so link it directly.
+    sc.collection.objects.link(linked)
+    try:
+        pick(linked)
+        got = (mod.rig_is_editable(linked), add("hip"), refused(lambda: bpy.ops.bonemancer.toggle_bone(bone_name="hip")),
+               refused(lambda: bpy.ops.bonemancer.import_bone_collections()))
+    finally:
+        pick(None)
+        sc.collection.objects.unlink(linked)
     return (got == (False, {'CANCELLED'}, {'CANCELLED'}, {'CANCELLED'}), got)
 check("linked rig: add to set, hide and import are refused", linked_readonly)
 
@@ -82,7 +92,7 @@ check("override rig is editable", make_override)
 check("override rig: add bones to a set", lambda: (add("hip") == add("knee") == {'FINISHED'}, None))
 check("override rig: import bone collections",
       lambda: (bpy.ops.bonemancer.import_bone_collections() == {'FINISHED'}
-               and [s.name for s in rig.bonemancer_sets] == ["Legs", "Feet"], [s.name for s in rig.bonemancer_sets]))
+               and [s.name for s in rig.bonemancer_sets] == ["Lib", "Legs", "Feet"], [s.name for s in rig.bonemancer_sets]))
 check("override rig: hide a bone", lambda: (bpy.ops.bonemancer.toggle_bone(bone_name="hip") == {'FINISHED'}, None))
 check("override rig: rename refused",
       lambda: (refused(lambda: bpy.ops.bonemancer.rename_bone(bone_name="hip", mode='EXACT', new_name="hip2")) == {'CANCELLED'}
@@ -92,13 +102,41 @@ check("override rig: new custom property refused",
                == {'CANCELLED'} and "stretch" not in rig.pose.bones["hip"].keys(), None))
 
 
+def refusal(call):
+    """Like refused(), but a Python traceback inside the operator counts as a failure."""
+    try:
+        return call()
+    except RuntimeError as e:
+        return "TRACEBACK" if "Traceback" in str(e) else {'CANCELLED'}
+
+
+def lib_bones():
+    return [b.bone_name for b in rig.bonemancer_sets["Lib"].bones]
+
+
+check("override rig: removing a library-defined set is refused cleanly",
+      lambda: (refusal(lambda: bpy.ops.bonemancer.remove_set(set_name="Lib")) == {'CANCELLED'}
+               and "Lib" in rig.bonemancer_sets, [s.name for s in rig.bonemancer_sets]))
+check("override rig: removing a library-defined bone from its set is refused cleanly",
+      lambda: (refusal(lambda: bpy.ops.bonemancer.remove_bone_from_set(set_name="Lib", bone_name="hip")) == {'CANCELLED'}
+               and lib_bones() == ["hip"], lib_bones()))
+
+
+def local_bone_in_library_set():
+    bpy.ops.bonemancer.add_bone_to_set(bone_name="knee", set_enum="Lib")
+    added = lib_bones()
+    r = refusal(lambda: bpy.ops.bonemancer.remove_bone_from_set(set_name="Lib", bone_name="knee"))
+    return (added == ["hip", "knee"] and r == {'FINISHED'} and lib_bones() == ["hip"], (added, r, lib_bones()))
+check("override rig: a bone added on the override to a library set can be removed", local_bone_in_library_set)
+
+
 def reload():
-    rig.bonemancer_sets[0].show_expanded = True
+    rig.bonemancer_sets["Legs"].show_expanded = True
     bpy.ops.wm.save_as_mainfile(filepath=saved_path)
     bpy.ops.wm.open_mainfile(filepath=saved_path)
     r = next(o for o in bpy.data.objects if o.type == 'ARMATURE' and o.override_library)
     got = [(g.name, g.show_expanded, [b.bone_name for b in g.bones]) for g in r.bonemancer_sets]
-    return (got == [("Legs", True, ["hip", "knee"]), ("Feet", False, ["knee"])], got)
+    return (got == [("Lib", False, ["hip"]), ("Legs", True, ["hip", "knee"]), ("Feet", False, ["knee"])], got)
 check("override rig: sets survive save and reload", reload)
 
 check("unregister()", mod.unregister)

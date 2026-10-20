@@ -73,4 +73,8 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
       sets.
 - [ ] Link the rig into another file and make a library override: sets are
       editable; bone rename and Add Property are refused with a message.
+      Deleting a set that came from the library file, or removing one of its
+      original bones, shows an error and changes nothing.
+- [ ] Delete the picked rig with X, save, reopen: the rig is gone (not kept
+      by Bone Mancer) and the panel shows no rig.
 - [ ] Uninstall the extension; Blender keeps working and the file still opens.

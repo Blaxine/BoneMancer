@@ -114,8 +114,6 @@ class BONEMANCER_PG_Settings(PropertyGroup):
     )
     # Armature the bone_selection list was built from (for rename tracking)
     bone_list_owner: PointerProperty(type=bpy.types.Object)
-    # Last picked rig; also how versions up to 1.0 remembered the pick (see migration)
-    last_armature: PointerProperty(name="Last Active Armature", type=bpy.types.Object)
 
 class BONEMANCER_PG_ShapeKey(bpy.types.PropertyGroup):
     object_name: StringProperty(name="Mesh Object Name")
@@ -682,7 +680,18 @@ def on_depsgraph_update(scene, depsgraph):
     if screen and screen.is_animation_playing:
         return
 
-    # 1) Follow the active armature in the viewport (cheap: one lookup)
+    # 1) Drop a picked rig that left the scene (deleted with X, unlinked). Our
+    # pointers count as users, so keeping them would keep a deleted rig in the
+    # file for good.
+    rig = scene.bonemancer_rig
+    if rig is not None and scene not in rig.users_scene:
+        _armature_change_from_viewport = True
+        try:
+            scene.bonemancer_rig = None
+        finally:
+            _armature_change_from_viewport = False
+
+    # 2) Follow the active armature in the viewport (cheap: one lookup)
     view_layer = depsgraph.view_layer
     active = view_layer.objects.active if view_layer else None
     if active and active.type == 'ARMATURE' and scene.bonemancer_rig != active:
@@ -692,7 +701,7 @@ def on_depsgraph_update(scene, depsgraph):
         finally:
             _armature_change_from_viewport = False
 
-    # 2) Only armature/object updates can change bone names or selection
+    # 3) Only armature/object updates can change bone names or selection
     if depsgraph.id_type_updated('ARMATURE') or depsgraph.id_type_updated('OBJECT'):
         changed = update_bone_list(scene)
         changed |= sync_selected_bone(scene, view_layer)
@@ -762,6 +771,18 @@ class BONEMANCER_OT_toggle_set(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def library_set(arm_obj, set_name):
+    """
+    The bone set of that name on the library rig an overridden rig is based on,
+    or None. Blender can't remove such sets (or their bones) from the override.
+    """
+    override = arm_obj.override_library if arm_obj else None
+    reference = override.reference if override else None
+    if reference is None:
+        return None
+    return next((s for s in reference.bonemancer_sets if s.name == set_name), None)
+
+
 class BONEMANCER_OT_remove_bone_from_set(bpy.types.Operator):
     bl_idname = "bonemancer.remove_bone_from_set"
     bl_label = "Remove Bone from Set"
@@ -771,13 +792,22 @@ class BONEMANCER_OT_remove_bone_from_set(bpy.types.Operator):
     bone_name: bpy.props.StringProperty()
 
     def execute(self, context):
+        arm = get_rig(context.scene)
         group = find_set(context.scene, self.set_name)
-        if not group or not rig_is_editable(get_rig(context.scene)):
+        if not group or not rig_is_editable(arm):
             self.report({'WARNING'}, f"Bone set '{self.set_name}' not found")
+            return {'CANCELLED'}
+        lib = library_set(arm, self.set_name)
+        if lib and any(b.bone_name == self.bone_name for b in lib.bones):
+            self.report({'ERROR'}, f"'{self.bone_name}' is in '{self.set_name}' in the rig's library file; remove it there")
             return {'CANCELLED'}
         for i, b in enumerate(group.bones):
             if b.bone_name == self.bone_name:
-                group.bones.remove(i)
+                try:
+                    group.bones.remove(i)
+                except TypeError:
+                    self.report({'ERROR'}, "This bone can't be removed from an overridden rig")
+                    return {'CANCELLED'}
                 break
         return {'FINISHED'}
 
@@ -796,10 +826,17 @@ class BONEMANCER_OT_remove_set(bpy.types.Operator):
         arm = get_rig(context.scene)
         if not rig_is_editable(arm):
             return {'CANCELLED'}
+        if library_set(arm, self.set_name):
+            self.report({'ERROR'}, f"Bone set '{self.set_name}' comes from the rig's library file; remove it there")
+            return {'CANCELLED'}
         groups = arm.bonemancer_sets
         for i, g in enumerate(groups):
             if g.name == self.set_name:
-                groups.remove(i)
+                try:
+                    groups.remove(i)
+                except TypeError:
+                    self.report({'ERROR'}, "This bone set can't be removed from an overridden rig")
+                    return {'CANCELLED'}
                 return {'FINISHED'}
         return {'CANCELLED'}
 
@@ -1623,8 +1660,6 @@ def on_armature_change(self, context):
     update_bone_list(scene)
     scan_shape_keys_for_armature(scene, arm_obj)
 
-    scene.bonemancer_settings.last_armature = arm_obj
-
 
 # --- Migration from older versions ---------------------------------------
 # Up to 1.0-dev, groups lived on the Scene as rmv2_groups_<armature name> and
@@ -1735,6 +1770,12 @@ def migrate_legacy_data():
                 scene.bonemancer_rig = rig
             finally:
                 _armature_change_from_viewport = False
+
+        # 1.0 development builds also kept the last pick here; the stale pointer
+        # would keep that rig in the file even after it's deleted
+        settings = scene.bonemancer_settings
+        if settings.get("last_armature") is not None:
+            del settings["last_armature"]
 
         # Everything else older versions kept on the Scene
         for store in legacy_stores(scene):
