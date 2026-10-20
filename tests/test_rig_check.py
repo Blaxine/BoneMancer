@@ -337,5 +337,32 @@ def python_drivers_when_blocked():
 check("Python drivers are counted, not listed, while scripts are blocked", python_drivers_when_blocked)
 
 
+# --- Unpaired left/right bones --------------------------------------------
+
+def unpaired(bones):
+    fresh(bones)
+    run()
+    return [bone for _c, bone, _d in issues("unpaired")]
+
+
+check("a side bone without its partner is listed",
+      lambda: (unpaired(("root", "arm.L")) == ["arm.L"], unpaired(("root", "arm.L"))))
+check("a matched pair is not listed",
+      lambda: (unpaired(("arm.L", "arm.R", "hand_l", "hand_r")) == [], unpaired(("arm.L", "arm.R", "hand_l", "hand_r"))))
+check("prefix and word sides are paired too (L_hand, LeftFoot)",
+      lambda: (unpaired(("L_hand", "LeftFoot", "RightFoot")) == ["L_hand"], unpaired(("L_hand", "LeftFoot", "RightFoot"))))
+check("names without a side are never listed (spine, Lid)",
+      lambda: (unpaired(("spine", "Lid", "root")) == [], unpaired(("spine", "Lid", "root"))))
+check("numbered copies need a numbered partner",
+      lambda: (unpaired(("arm.L", "arm.R", "arm.L.001")) == ["arm.L.001"], unpaired(("arm.L", "arm.R", "arm.L.001"))))
+
+
+def unpaired_message():
+    fresh(("root", "arm.R"))
+    run()
+    return (messages("unpaired") == ["arm.R: no 'arm.L' on the other side"], messages("unpaired"))
+check("the message names the missing partner", unpaired_message)
+
+
 check("unregister()", mod.unregister)
 finish()

@@ -1574,6 +1574,14 @@ RIG_CHECKS = {
          "Fix: right-click the driven property > Open Drivers Editor, then",
          "fix the variable's object and path, or the expression."),
     ),
+    'unpaired': (
+        "Unpaired left/right bones", 'MOD_MIRROR',
+        ("This bone's name marks a side (.L, _R, Left...) but the other side",
+         "has no bone of the matching name, so Symmetrize, X-Axis Mirror and",
+         "pose flipping skip it.",
+         "Fix: add or rename the other side's bone so the names match,",
+         "or ignore this if the bone is one-sided on purpose."),
+    ),
 }
 
 
@@ -1597,6 +1605,14 @@ def find_constraint_issues(context, rig):
             problem = constraint_problem(con)
             if problem:
                 yield pb.name, con.name, f"{pb.name}: {con.name} {problem}", ""
+
+
+def find_unpaired_bones(context, rig):
+    names = {b.name for b in rig.data.bones}
+    for bone in rig.data.bones:
+        other = bpy.utils.flip_name(bone.name)
+        if other != bone.name and other not in names:
+            yield bone.name, "", f"{bone.name}: no '{other}' on the other side", ""
 
 
 def skinned_meshes(scene, rig):
@@ -1706,6 +1722,7 @@ def refresh_evaluation(context, rig):
 RIG_CHECK_FINDERS = [
     ('constraint', find_constraint_issues),
     ('driver', find_driver_issues),
+    ('unpaired', find_unpaired_bones),
 ]
 
 

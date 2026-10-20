@@ -279,8 +279,8 @@ counted in the note instead.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S012 | S | `unpaired` check | For each bone with `flip_name(name) != name` and no bone named `flip_name(name)`, one issue. | S002 | `bonemancer/__init__.py` |
-|  | S013 | T | Extend rig check suite: pairing | `arm.L` alone → listed; `arm.L` + `arm.R` → none; `L_hand` alone → listed; `spine`, `Lid` → none; `arm.L.001` without `arm.R.001` → listed. | S012 | `tests/test_rig_check.py` |
+| ✅ | S012 | S | `unpaired` check | For each bone with `flip_name(name) != name` and no bone named `flip_name(name)`, one issue. | S002 | `bonemancer/__init__.py` |
+| ✅ | S013 | T | Extend rig check suite: pairing | `arm.L` alone → listed; `arm.L` + `arm.R` → none; `L_hand` alone → listed; `spine`, `Lid` → none; `arm.L.001` without `arm.R.001` → listed. | S012 | `tests/test_rig_check.py` |
 
 ### Slice 4 — Weight mismatch
 
