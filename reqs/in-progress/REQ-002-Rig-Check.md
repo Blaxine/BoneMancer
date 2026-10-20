@@ -291,9 +291,9 @@ human.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S014 | S | Weight checks | One pass per skinned mesh collecting groups with non-zero weight; `deform_unweighted` and `nondeform_weighted` per *Architectural decisions*. | S008 | `bonemancer/__init__.py` |
-|  | S015 | T | Extend rig check suite: weights | Deform bone with no group / empty group → listed; with weights → not; non-deform bone with weighted group → listed, with empty group → not; bone-parented prop mesh ignored. | S014 | `tests/test_rig_check.py` |
-|  | S016 | T | Timing run (manual) | Rigify human + ~50k-vertex skinned mesh, time Check Rig on 4.5 and 5.2; record the numbers in this plan's Revision History. | S014 | — |
+| ✅ | S014 | S | Weight checks | One pass per skinned mesh collecting groups with non-zero weight; `deform_unweighted` and `nondeform_weighted` per *Architectural decisions*. | S008 | `bonemancer/__init__.py` |
+| ✅ | S015 | T | Extend rig check suite: weights | Deform bone with no group / empty group → listed; with weights → not; non-deform bone with weighted group → listed, with empty group → not; bone-parented prop mesh ignored. | S014 | `tests/test_rig_check.py` |
+| ✅ | S016 | T | Timing run (manual) | Rigify human + ~50k-vertex skinned mesh, time Check Rig on 4.5 and 5.2; record the numbers in this plan's Revision History. | S014 | — |
 
 ### Slice 5 — Setup mistakes
 
@@ -503,3 +503,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
 | 2026-10-20 | Blaxine | Initial plan. |
+| 2026-10-20 | Blaxine | Slices 1–4 implemented. S016 timing (generated Rigify human, 706 bones / 160 deform, 50,946-vertex skinned mesh, 4 weights per vertex): 0.01–0.03 s on 4.5.4 and 5.2.2; worst case with one empty deform group (full weight pass) 0.07–0.10 s. No issues reported on the generated Rigify rig. Driver notes corrected: Python drivers in untrusted files are skipped (not invalid) and owners need `update_tag()`. |

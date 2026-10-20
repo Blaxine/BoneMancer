@@ -1582,7 +1582,25 @@ RIG_CHECKS = {
          "Fix: add or rename the other side's bone so the names match,",
          "or ignore this if the bone is one-sided on purpose."),
     ),
+    'deform_unweighted': (
+        "Deform bones without weights", 'GROUP_VERTEX',
+        ("This bone has Deform on, but no skinned mesh has weights for it,",
+         "so moving it doesn't move the mesh.",
+         "Fix: weight paint it (or parent with Automatic Weights again), or",
+         "turn off Deform in Bone Properties if it's a control or helper bone."),
+    ),
+    'nondeform_weighted': (
+        "Weighted bones with Deform off", 'MOD_VERTEX_WEIGHT',
+        ("A skinned mesh has weights for this bone, but its Deform option is",
+         "off, so the weights are ignored and that part of the mesh stays put.",
+         "Fix: turn on Deform in Bone Properties, or delete the bone's vertex",
+         "group from the mesh if the weights are left over."),
+    ),
 }
+
+# Shared between the checks of one run (e.g. both weight checks read the
+# same weights); emptied at the start of every run.
+_check_cache = {}
 
 
 def constraint_problem(con):
@@ -1623,6 +1641,53 @@ def skinned_meshes(scene, rig):
         if (obj.parent == rig and obj.parent_type == 'ARMATURE') or any(
                 m.type == 'ARMATURE' and m.object == rig for m in obj.modifiers):
             yield obj
+
+
+def weighted_group_names(mesh_obj):
+    """Names of mesh_obj's vertex groups that have a non-zero weight on some vertex."""
+    names = {g.index: g.name for g in mesh_obj.vertex_groups}
+    found = set()
+    for vert in mesh_obj.data.vertices:
+        for elem in vert.groups:
+            if elem.weight > 0.0:
+                found.add(elem.group)
+        if len(found) == len(names):
+            break
+    return {names[i] for i in found if i in names}
+
+
+def rig_weights(context, rig):
+    """{bone name: [meshes weighting it]} over the rig's skinned meshes, or None without any."""
+    key = ("weights", rig.name)
+    if key not in _check_cache:
+        meshes = list(skinned_meshes(context.scene, rig))
+        weights = None
+        if meshes:
+            weights = {}
+            for mesh in meshes:
+                for name in weighted_group_names(mesh):
+                    weights.setdefault(name, []).append(mesh.name)
+        _check_cache[key] = weights
+    return _check_cache[key]
+
+
+def find_unweighted_deform_bones(context, rig):
+    weights = rig_weights(context, rig)
+    if weights is None:
+        return
+    for bone in rig.data.bones:
+        if bone.use_deform and bone.name not in weights:
+            yield bone.name, "", f"{bone.name}: Deform is on but no skinned mesh has weights for it", ""
+
+
+def find_weighted_nondeform_bones(context, rig):
+    weights = rig_weights(context, rig)
+    if weights is None:
+        return
+    for bone in rig.data.bones:
+        if not bone.use_deform and bone.name in weights:
+            meshes = ", ".join(weights[bone.name])
+            yield bone.name, "", f"{bone.name}: weighted on {meshes} but Deform is off", ""
 
 
 def driver_owners(scene, rig):
@@ -1723,6 +1788,8 @@ RIG_CHECK_FINDERS = [
     ('constraint', find_constraint_issues),
     ('driver', find_driver_issues),
     ('unpaired', find_unpaired_bones),
+    ('deform_unweighted', find_unweighted_deform_bones),
+    ('nondeform_weighted', find_weighted_nondeform_bones),
 ]
 
 
@@ -1756,6 +1823,7 @@ def run_rig_check(context, rig):
     results = context.scene.bonemancer_rig_check
     results.issues.clear()
     results.python_drivers = 0
+    _check_cache.clear()
     refresh_evaluation(context, rig)
     for check_id, finder in RIG_CHECK_FINDERS:
         for bone, detail, message, object_name in finder(context, rig):
@@ -1765,6 +1833,7 @@ def run_rig_check(context, rig):
             issue.detail = detail
             issue.message = message
             issue.object_name = object_name
+    _check_cache.clear()
     results.issues_index = 0
     results.has_run = True
     return len(results.issues)

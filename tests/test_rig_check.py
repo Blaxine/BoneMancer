@@ -252,8 +252,8 @@ def driver_on_shape_key():
     key = body.data.shape_keys
     add_driver(key, 'key_blocks["Smile"].value', '["missing"]', target=rig)
     run()
-    got = [(i.check, i.bone, i.detail, i.object_name) for i in sc.bonemancer_rig_check.issues]
-    r = bpy.ops.bonemancer.select_issue(index=0)
+    got = [(i.check, i.bone, i.detail, i.object_name) for i in sc.bonemancer_rig_check.issues if i.check == "driver"]
+    r = bpy.ops.bonemancer.select_issue(index=0)    # drivers are listed before weight issues
     return ((got, r, bpy.context.view_layer.objects.active == body, body.select_get())
             == ([("driver", "", f'KEY:{key.name}:key_blocks["Smile"].value[0]', "Body")], {'FINISHED'}, True, True),
             (got, r))
@@ -362,6 +362,90 @@ def unpaired_message():
     run()
     return (messages("unpaired") == ["arm.R: no 'arm.L' on the other side"], messages("unpaired"))
 check("the message names the missing partner", unpaired_message)
+
+
+# --- Weight mismatch ------------------------------------------------------
+
+def weigh(mesh_obj, group, weight):
+    """A vertex group on mesh_obj for group, with weight on every vertex (0 = empty group)."""
+    vg = mesh_obj.vertex_groups.new(name=group)
+    if weight:
+        vg.add(list(range(len(mesh_obj.data.vertices))), weight, 'REPLACE')
+    return vg
+
+
+def weight_rig():
+    """root: weighted, deform · spine: deform, empty group · tail: deform, no group ·
+    ctrl: not deform, weighted · mch: not deform, empty group."""
+    rig = fresh(("root", "spine", "tail", "ctrl", "mch"))
+    for name in ("ctrl", "mch"):
+        rig.data.bones[name].use_deform = False
+    body = skinned_mesh(rig)
+    weigh(body, "root", 1.0)
+    weigh(body, "spine", 0.0)
+    weigh(body, "ctrl", 0.5)
+    weigh(body, "mch", 0.0)
+    return rig, body
+
+
+def unweighted_deform():
+    weight_rig()
+    run()
+    got = [bone for _c, bone, _d in issues("deform_unweighted")]
+    return (got == ["spine", "tail"], got)
+check("deform bones with an empty group or no group are listed", unweighted_deform)
+
+
+def weighted_nondeform():
+    weight_rig()
+    run()
+    got = (issues("nondeform_weighted"), messages("nondeform_weighted"))
+    return (got == ([("nondeform_weighted", "ctrl", "")], ["ctrl: weighted on Body but Deform is off"]), got)
+check("non-deform bones with weights are listed; an empty group isn't", weighted_nondeform)
+
+
+def weights_across_meshes():
+    rig, body = weight_rig()
+    other = skinned_mesh(rig, "Head")
+    weigh(other, "spine", 1.0)
+    weigh(other, "tail", 1.0)
+    run()
+    return (issues("deform_unweighted") == [], issues("deform_unweighted"))
+check("weights on any skinned mesh count", weights_across_meshes)
+
+
+def armature_parented_mesh():
+    rig = fresh(("root",))
+    body = skinned_mesh(rig)
+    body.modifiers.clear()
+    body.parent = rig
+    body.parent_type = 'ARMATURE'
+    run()
+    return (issues("deform_unweighted") == [("deform_unweighted", "root", "")], issues())
+check("a mesh with armature parenting counts as skinned", armature_parented_mesh)
+
+
+def bone_parented_prop():
+    rig = fresh(("root", "hand"))
+    rig.data.bones["hand"].use_deform = False
+    body = skinned_mesh(rig)
+    weigh(body, "root", 1.0)
+    prop = skinned_mesh(rig, "Sword")
+    prop.modifiers.clear()
+    prop.parent = rig
+    prop.parent_type = 'BONE'
+    prop.parent_bone = "hand"
+    weigh(prop, "hand", 1.0)      # leftover weights on a rigid prop
+    run()
+    return (issues("nondeform_weighted") == [], issues())
+check("a bone-parented prop is not skinned, so its groups don't count", bone_parented_prop)
+
+
+def no_skinned_mesh():
+    fresh(("root", "spine"))
+    run()
+    return (issues("deform_unweighted") + issues("nondeform_weighted") == [], issues())
+check("a rig with no skinned mesh gets no weight issues", no_skinned_mesh)
 
 
 check("unregister()", mod.unregister)
