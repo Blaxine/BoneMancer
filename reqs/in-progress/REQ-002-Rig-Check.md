@@ -33,9 +33,13 @@ riggers from beginner to hobbyist, and at animators receiving rigs.
 - **`driver.is_valid` is only set by an evaluation.** Before the depsgraph evaluates
   the owner, every driver reads valid (verified on 4.5.4 and 5.2.2); the check must
   evaluate before reading it.
-- **With Auto Run Python Scripts off, every non-simple driver expression reads
-  invalid.** `bpy.app.autoexec_fail` is set and `driver.is_simple_expression` is
-  `False` for those; a syntax error in such an expression looks identical.
+- **Python drivers in an untrusted file are skipped, not failed.** Blender sets
+  `bpy.app.autoexec_fail` when it skips one; their `is_valid` then says nothing.
+  Headless runs always execute them (even with `--disable-autoexec` or
+  `use_scripts=False`), so tests simulate the blocked state. Expressions using names
+  the driver sandbox forbids (e.g. `__import__`) are genuinely invalid.
+- **Deleting a property a driver reads doesn't re-evaluate the driver.** Its owner
+  needs `update_tag()` before `view_layer.update()` (verified on both versions).
 - **`DriverVariable` has no `is_valid`.** Only `is_name_valid`; which variable broke
   must be found by resolving each target (`targ.id`, `data_path`, `bone_target`).
 - **`Constraint.is_valid` already covers** missing target and missing subtarget
@@ -263,10 +267,10 @@ counted in the note instead.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S008 | S | Skinned-mesh finder | Skinned meshes of the rig per *Architectural decisions*. | S002 | `bonemancer/__init__.py` |
-|  | S009 | S | `driver` check | Evaluate, then walk the driver scope; list invalid drivers with owner + data path + index; name the failing variable by resolving its targets; skip and count non-simple expressions when `bpy.app.autoexec_fail`. | S008 | `bonemancer/__init__.py` |
-|  | S010 | U | Python-driver note | Note line with the count. | S009 | `bonemancer/__init__.py` |
-|  | S011 | T | Extend rig check suite: drivers | Missing variable path on rig and on a skinned mesh's shape key → listed; valid driver → not listed; Python expression under `--factory-startup` (Auto Run off) → counted, not listed; a driver on an unrelated object → not listed. | S010 | `tests/test_rig_check.py` |
+| ✅ | S008 | S | Skinned-mesh finder | Skinned meshes of the rig per *Architectural decisions*. | S002 | `bonemancer/__init__.py` |
+| ✅ | S009 | S | `driver` check | Evaluate, then walk the driver scope; list invalid drivers with owner + data path + index; name the failing variable by resolving its targets; skip and count non-simple expressions when `bpy.app.autoexec_fail`. | S008 | `bonemancer/__init__.py` |
+| ✅ | S010 | U | Python-driver note | Note line with the count. | S009 | `bonemancer/__init__.py` |
+| ✅ | S011 | T | Extend rig check suite: drivers | Missing variable path on rig and on a skinned mesh's shape key → listed; valid driver → not listed; Python expression while scripts are blocked (simulated) → counted, not listed; a driver on an unrelated object → not listed. | S010 | `tests/test_rig_check.py` |
 
 ### Slice 3 — Unpaired left/right bones
 
@@ -481,8 +485,8 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 - **Driver scope: rig object only, or every driver reading the rig.** The first
   misses shape-key correctives; the second reports objects the user doesn't consider
   part of the rig and slows big scenes.
-- **Reporting Python drivers as broken when Auto Run is off.** Every non-simple
-  expression reads invalid then (verified), flooding the list on safe-mode files.
+- **Reporting Python drivers as broken when Auto Run is off.** Blender never
+  evaluated them, so the list would claim drivers are broken that may work.
 - **Weight check by group names only.** An empty group passes; an empty non-deform
   group is flagged.
 - **Scanner's "deformed by" rule for weights.** It includes bone-parented props,

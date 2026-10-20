@@ -1567,6 +1567,13 @@ RIG_CHECKS = {
          "Fix: in Bone Properties > Bone Constraints, set the Target (and",
          "its Bone field), or delete the constraint if it isn't needed."),
     ),
+    'driver': (
+        "Broken drivers", 'DRIVER',
+        ("A driver that can't evaluate leaves its property stuck, so the",
+         "slider, corrective shape or switch it controls stops responding.",
+         "Fix: right-click the driven property > Open Drivers Editor, then",
+         "fix the variable's object and path, or the expression."),
+    ),
 }
 
 
@@ -1584,7 +1591,7 @@ def constraint_problem(con):
     return "is not valid"
 
 
-def find_constraint_issues(rig):
+def find_constraint_issues(context, rig):
     for pb in rig.pose.bones:
         for con in pb.constraints:
             problem = constraint_problem(con)
@@ -1592,10 +1599,113 @@ def find_constraint_issues(rig):
                 yield pb.name, con.name, f"{pb.name}: {con.name} {problem}", ""
 
 
+def skinned_meshes(scene, rig):
+    """Meshes the rig deforms through an Armature modifier or armature parenting."""
+    for obj in scene.objects:
+        if obj.type != 'MESH':
+            continue
+        if (obj.parent == rig and obj.parent_type == 'ARMATURE') or any(
+                m.type == 'ARMATURE' and m.object == rig for m in obj.modifiers):
+            yield obj
+
+
+def driver_owners(scene, rig):
+    """(ID holding drivers, object to select) for everything the driver check covers."""
+    yield rig, rig
+    yield rig.data, rig
+    for mesh in skinned_meshes(scene, rig):
+        yield mesh, mesh
+        if mesh.data.shape_keys:
+            yield mesh.data.shape_keys, mesh
+
+
+def python_drivers_blocked():
+    """True when Blender skipped Python expressions because the file's scripts aren't trusted."""
+    return bpy.app.autoexec_fail
+
+
+def _resolves(id_data, path):
+    if id_data is None or not path:
+        return False
+    try:
+        id_data.path_resolve(path)
+        return True
+    except ValueError:
+        return False
+
+
+def driver_problem(owner, fcurve):
+    """Why an invalid driver fails, as the end of a sentence."""
+    if not _resolves(owner, fcurve.data_path):
+        return "drives a property that doesn't exist"
+    driver = fcurve.driver
+    for var in driver.variables:
+        if not var.is_name_valid:
+            return f"has a variable with an invalid name '{var.name}'"
+        if var.type == 'CONTEXT_PROP':
+            continue
+        used = var.targets[:2] if var.type in {'ROTATION_DIFF', 'LOC_DIFF'} else var.targets[:1]
+        for targ in used:
+            if targ.id is None:
+                return f"variable '{var.name}' has no object"
+            if var.type == 'SINGLE_PROP':
+                if not _resolves(targ.id, targ.data_path):
+                    return f"variable '{var.name}' reads a missing path '{targ.data_path}'"
+            elif targ.bone_target:
+                bones = getattr(getattr(targ.id, "data", None), "bones", None)
+                if bones is not None and targ.bone_target not in bones:
+                    return f"variable '{var.name}' uses missing bone '{targ.bone_target}'"
+    if driver.type == 'SCRIPTED':
+        return f"expression '{driver.expression}' fails"
+    return "is not valid"
+
+
+_BONE_PATH = re.compile(r'^(?:pose\.)?bones\["((?:[^"\\]|\\.)*)"\]')
+
+
+def driven_bone(owner, rig, data_path):
+    """The rig's bone a driver drives (pose.bones["x"]... on the rig, bones["x"]... on its data), or ''."""
+    if owner not in (rig, rig.data):
+        return ""
+    match = _BONE_PATH.match(data_path)
+    if not match or match.group(0).startswith("pose.") != (owner == rig):
+        return ""
+    name = bpy.utils.unescape_identifier(match.group(1))
+    return name if name in rig.data.bones else ""
+
+
+def find_driver_issues(context, rig):
+    results = context.scene.bonemancer_rig_check
+    for owner, select_obj in driver_owners(context.scene, rig):
+        anim = owner.animation_data
+        if not anim:
+            continue
+        for fc in anim.drivers:
+            driver = fc.driver
+            if driver.is_valid:
+                continue
+            if driver.type == 'SCRIPTED' and not driver.is_simple_expression and python_drivers_blocked():
+                results.python_drivers += 1
+                continue
+            bone = driven_bone(owner, rig, fc.data_path)
+            label = owner.name if isinstance(owner, bpy.types.Object) else f"{select_obj.name} ({owner.id_type.title()})"
+            detail = f"{owner.id_type}:{owner.name}:{fc.data_path}[{fc.array_index}]"
+            message = f"{label}: driver on {fc.data_path}[{fc.array_index}] {driver_problem(owner, fc)}"
+            yield bone, detail, message, select_obj.name
+
+
+def refresh_evaluation(context, rig):
+    """Re-evaluate everything the checks read: validity flags only update on evaluation."""
+    for owner, _obj in driver_owners(context.scene, rig):
+        owner.update_tag()
+    context.view_layer.update()
+
+
 # Checks run in this order, which is also the order results are listed in.
-# Each finder yields (bone, detail, message, object_name) per issue.
+# Each finder takes (context, rig) and yields (bone, detail, message, object_name).
 RIG_CHECK_FINDERS = [
     ('constraint', find_constraint_issues),
+    ('driver', find_driver_issues),
 ]
 
 
@@ -1612,6 +1722,8 @@ class BONEMANCER_PG_RigCheck(PropertyGroup):
     issues: CollectionProperty(type=BONEMANCER_PG_Issue)
     issues_index: IntProperty(default=0)
     has_run: BoolProperty(default=False)
+    # Python expression drivers that couldn't be checked (scripts not trusted)
+    python_drivers: IntProperty(default=0)
 
 
 def clear_rig_check(scene):
@@ -1619,16 +1731,17 @@ def clear_rig_check(scene):
     results.issues.clear()
     results.issues_index = 0
     results.has_run = False
+    results.python_drivers = 0
 
 
 def run_rig_check(context, rig):
     """Replace the scene's results with a fresh check of rig; returns the issue count."""
     results = context.scene.bonemancer_rig_check
     results.issues.clear()
-    # Validity flags are only refreshed when the depsgraph evaluates
-    context.view_layer.update()
+    results.python_drivers = 0
+    refresh_evaluation(context, rig)
     for check_id, finder in RIG_CHECK_FINDERS:
-        for bone, detail, message, object_name in finder(rig):
+        for bone, detail, message, object_name in finder(context, rig):
             issue = results.issues.add()
             issue.check = check_id
             issue.bone = bone
@@ -1772,6 +1885,11 @@ class BONEMANCER_PT_rig_check(bpy.types.Panel):
         if not results.has_run:
             return
         layout.label(text="New problems show up the next time you check", icon='INFO')
+        if results.python_drivers:
+            layout.label(
+                text=f"{results.python_drivers} Python driver{'s' if results.python_drivers != 1 else ''} "
+                     "can't be checked while Auto Run Python Scripts is off",
+                icon='SCRIPT')
 
         issues = visible_issues(scene)
         if not issues:
