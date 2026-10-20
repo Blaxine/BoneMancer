@@ -344,9 +344,9 @@ re-running, and a newly broken one only appears after Check Rig.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S028 | S | Per-issue re-test | Cheap re-test per check id per *Architectural decisions* (weights: Deform flag and group existence only). | S017, S014, S012, S009 | `bonemancer/__init__.py` |
-|  | S029 | U | Fixed rows | UIList greys fixed rows with the "check again" hint. | S028 | `bonemancer/__init__.py` |
-|  | S030 | T | Extend rig check suite: re-verify | Fix each check's case after a run → re-test reports fixed; break something new → not listed until re-run; save/reopen → results present and re-tested. | S029 | `tests/test_rig_check.py` |
+| ✅ | S028 | S | Per-issue re-test | Cheap re-test per check id per *Architectural decisions* (weights: Deform flag and group existence only). | S017, S014, S012, S009 | `bonemancer/__init__.py` |
+| ✅ | S029 | U | Fixed rows | UIList greys fixed rows with the "check again" hint. | S028 | `bonemancer/__init__.py` |
+| ✅ | S030 | T | Extend rig check suite: re-verify | Fix each check's case after a run → re-test reports fixed; break something new → not listed until re-run; save/reopen → results present and re-tested. | S029 | `tests/test_rig_check.py` |
 
 ### Slice 9 — 1.1 release
 

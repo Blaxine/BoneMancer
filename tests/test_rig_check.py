@@ -682,5 +682,105 @@ def ignore_follows_outside_rename():
 check("ignores follow an outside rename, including driver paths", ignore_follows_outside_rename)
 
 
+# --- Re-testing listed issues ---------------------------------------------
+
+def fixed_states():
+    """{(check, bone or detail): fixed?} for the listed issues, and every row drawn."""
+    for i, item in enumerate(sc.bonemancer_rig_check.issues):
+        mod.BONEMANCER_UL_rig_issues.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
+    return {(it.check, it.bone or it.detail): mod.issue_fixed(bpy.context, it) for it in sc.bonemancer_rig_check.issues}
+
+
+def broken_everything():
+    """One issue of every kind on one rig."""
+    rig = fresh(("root", "spine", "arm.L", "ctrl"))
+    rig.data.bones["ctrl"].use_deform = False
+    rig.scale = (0.5, 0.5, 0.5)
+    rig.pose.bones["spine"].constraints.new('COPY_ROTATION')
+    add_driver(rig, "location", '["missing"]', 0, target=rig)
+    body = skinned_mesh(rig)
+    for name in ("root", "spine", "ctrl"):
+        weigh(body, name, 1.0)                     # arm.L: deform, unweighted · ctrl: weighted, not deform
+    bare = parented_mesh(rig, "Bare")
+    other = make_arm("Other")
+    wrong = parented_mesh(rig, "Wrong", modifier_object=other)
+    pick(rig)
+    run()
+    return rig, body, bare, wrong
+
+
+def all_listed_unfixed():
+    broken_everything()
+    states = fixed_states()
+    expected = {"constraint", "driver", "unpaired", "deform_unweighted", "nondeform_weighted",
+                "rig_transform", "mesh_no_modifier", "modifier_wrong_rig"}
+    return ({c for c, _k in states} == expected and not any(states.values()), states)
+check("right after a check, every kind of issue is listed and none is fixed", all_listed_unfixed)
+
+
+def every_fix_is_seen():
+    rig, body, bare, wrong = broken_everything()
+    con = rig.pose.bones["spine"].constraints[0]
+    con.target = bpy.data.objects["Bare"]
+    rig["p"] = 1.0
+    rig.animation_data.drivers[0].driver.variables[0].targets[0].data_path = '["p"]'
+    rig.data.bones["ctrl"].use_deform = True
+    rig.scale = (1, 1, 1)
+    bare.modifiers.new("Armature", 'ARMATURE').object = rig
+    wrong.modifiers["Armature"].object = rig
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='EDIT')
+    rig.data.edit_bones.new("arm.R").tail = (0, 0, 1)   # partner for arm.L
+    bpy.ops.object.mode_set(mode='OBJECT')
+    rig.data.bones["arm.L"].use_deform = False
+    bpy.context.view_layer.update()
+    states = fixed_states()
+    return (all(states.values()), states)
+check("fixing each problem marks its row fixed without checking again", every_fix_is_seen)
+
+
+def new_problem_waits():
+    rig = fresh(("root",))
+    run()
+    rig.pose.bones["root"].constraints.new('COPY_ROTATION')
+    before = issues()
+    run()
+    return ((before, len(issues())) == ([], 1), (before, issues()))
+check("a problem made after the check is only listed by the next check", new_problem_waits)
+
+
+def deleted_subjects_are_fixed():
+    rig, body, bare, wrong = broken_everything()
+    bpy.data.objects.remove(bare)
+    bpy.data.objects.remove(wrong)
+    rig.animation_data.drivers.remove(rig.animation_data.drivers[0])
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='EDIT')
+    for name in ("spine", "arm.L", "ctrl"):
+        rig.data.edit_bones.remove(rig.data.edit_bones[name])
+    bpy.ops.object.mode_set(mode='OBJECT')
+    states = fixed_states()
+    states.pop(("rig_transform", ""), None)
+    return (all(states.values()), states)
+check("an issue whose bone, driver or mesh was deleted counts as fixed", deleted_subjects_are_fixed)
+
+
+def retest_after_reload():
+    global sc
+    rig = fresh(("root",))
+    con = rig.pose.bones["root"].constraints.new('COPY_ROTATION')
+    run()
+    path = os.path.join(tmp_dir(), "retest.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=path)
+    bpy.ops.wm.open_mainfile(filepath=path)
+    sc = bpy.context.scene
+    before = fixed_states()
+    rig = bpy.data.objects["Rig"]
+    rig.pose.bones["root"].constraints[0].target = bpy.data.objects.new("T", None)
+    after = fixed_states()
+    return ((before, after) == ({("constraint", "root"): False}, {("constraint", "root"): True}), (before, after))
+check("saved results are re-tested after reopening", retest_after_reload)
+
+
 check("unregister()", mod.unregister)
 finish()

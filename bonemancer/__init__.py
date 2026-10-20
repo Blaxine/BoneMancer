@@ -1836,6 +1836,68 @@ def find_modifiers_on_other_rigs(context, rig):
             yield "", f"{obj.name}:{m.name}", f"{obj.name}: Armature modifier '{m.name}' {problem}", obj.name
 
 
+# --- Re-testing listed issues ---------------------------------------------
+# Each drawn row asks whether its issue is fixed. These tests only read what
+# is cheap and already up to date; weights are never re-read.
+
+def _driver_owner(id_type, name):
+    store = {'OBJECT': bpy.data.objects, 'ARMATURE': bpy.data.armatures, 'KEY': bpy.data.shape_keys}.get(id_type)
+    return store.get(name) if store is not None else None
+
+
+def _driver_fixed(issue):
+    id_type, _sep, rest = issue.detail.partition(":")
+    owner_name, path_and_index = rest.split(":", 1) if ":" in rest else ("", rest)
+    path, _bracket, index = path_and_index.rpartition("[")
+    owner = _driver_owner(id_type, owner_name)
+    anim = owner.animation_data if owner else None
+    try:
+        fcurve = anim.drivers.find(path, index=int(index.rstrip("]"))) if anim else None
+    except ValueError:
+        return False
+    return fcurve is None or fcurve.driver.is_valid
+
+
+def _mesh_fixed(scene, rig, issue):
+    obj = bpy.data.objects.get(issue.object_name)
+    if obj is None or obj.parent != rig or scene.objects.get(obj.name) != obj:
+        return True
+    mods = [m for m in obj.modifiers if m.type == 'ARMATURE']
+    if issue.check == 'mesh_no_modifier':
+        return obj.parent_type != 'OBJECT' or bool(mods)
+    mod_name = issue.detail[len(obj.name) + 1:]
+    m = obj.modifiers.get(mod_name)
+    return m is None or m.type != 'ARMATURE' or any(x.object == rig for x in mods)
+
+
+def issue_fixed(context, issue):
+    """True when a listed issue no longer applies (as far as a cheap re-test can tell)."""
+    rig = get_rig(context.scene)
+    if rig is None:
+        return False
+    check_id = issue.check
+    if check_id in {'constraint', 'unpaired', 'deform_unweighted', 'nondeform_weighted'}:
+        bone = rig.data.bones.get(issue.bone)
+        if bone is None:
+            return True
+        if check_id == 'constraint':
+            con = rig.pose.bones[issue.bone].constraints.get(issue.detail)
+            return con is None or not constraint_problem(con)
+        if check_id == 'unpaired':
+            return bpy.utils.flip_name(bone.name) in rig.data.bones
+        if check_id == 'deform_unweighted':
+            return not bone.use_deform
+        return bone.use_deform or not any(
+            mesh.vertex_groups.get(bone.name) for mesh in skinned_meshes(context.scene, rig))
+    if check_id == 'driver':
+        return _driver_fixed(issue)
+    if check_id == 'rig_transform':
+        return not any(find_unapplied_transform(context, rig))
+    if check_id in {'mesh_no_modifier', 'modifier_wrong_rig'}:
+        return _mesh_fixed(context.scene, rig, issue)
+    return False
+
+
 def refresh_evaluation(context, rig):
     """Re-evaluate everything the checks read: validity flags only update on evaluation."""
     for owner, _obj in driver_owners(context.scene, rig):
@@ -2125,11 +2187,15 @@ class BONEMANCER_UL_rig_issues(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         rig = get_rig(context.scene)
         ignored = is_ignored(rig, item)
+        fixed = issue_fixed(context, item)
         row = layout.row(align=True)
         check_icon = RIG_CHECKS.get(item.check, ("", 'ERROR', ()))[1]
         label = row.row(align=True)
-        label.active = not ignored
-        label.label(text=item.message, icon=check_icon)
+        label.active = not (ignored or fixed)
+        if fixed:
+            label.label(text=f"{item.message} (fixed; check again to update)", icon='CHECKMARK')
+        else:
+            label.label(text=item.message, icon=check_icon)
         op = row.operator("bonemancer.select_issue", text="", icon='RESTRICT_SELECT_OFF')
         op.index = index
         op = row.operator("bonemancer.explain_issue", text="", icon='INFO')
