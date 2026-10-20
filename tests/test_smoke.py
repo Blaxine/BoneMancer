@@ -597,6 +597,86 @@ def p30():
 check("P30 last_armature is gone, and stale values from dev builds are removed on load", p30)
 
 
+def scanner():
+    return [(g.object_name, [k.key_name for k in g.shape_keys]) for g in sc.bonemancer_shape_keys.object_groups]
+
+
+def p31():
+    reset(); arm = make_arm("Rig"); m = add_mesh(arm); pick(arm)
+    first = scanner()
+    m.shape_key_add(name="Frown")
+    added = mod.refresh_shape_keys(sc)
+    after_add = scanner()
+    m.data.shape_keys.key_blocks["Smile"].name = "Grin"
+    mod.refresh_shape_keys(sc)
+    after_rename = scanner()
+    m.shape_key_remove(m.data.shape_keys.key_blocks["Frown"])
+    mod.refresh_shape_keys(sc)
+    got = (first, added, after_add, after_rename, scanner())
+    return (got == ([(m.name, ["Smile"])], True, [(m.name, ["Smile", "Frown"])], [(m.name, ["Grin", "Frown"])],
+                    [(m.name, ["Grin"])]), got)
+check("P31 the scanner follows shape keys added, renamed and removed", p31)
+
+
+def p31b():
+    reset(); arm = make_arm("Rig"); m = add_mesh(arm); pick(arm)
+    other = add_mesh()                                      # not deformed yet
+    before = scanner()
+    other.modifiers.new("Armature", 'ARMATURE').object = arm
+    mod.refresh_shape_keys(sc)
+    added = [name for name, _keys in scanner()]
+    m.parent = None
+    mod.refresh_shape_keys(sc)
+    got = (before, added, [name for name, _keys in scanner()])
+    return (got == ([(m.name, ["Smile"])], sorted([m.name, other.name]), [other.name]), got)
+check("P31b meshes appear and disappear as they gain or lose the rig", p31b)
+
+
+def p31c():
+    reset(); arm = make_arm("Rig"); a = add_mesh(arm, ("Basis", "One", "Two")); b = add_mesh(arm); pick(arm)
+    settings = sc.bonemancer_shape_keys
+    names = [g.object_name for g in settings.object_groups]
+    settings.object_groups_index = names.index(a.name)
+    grp = settings.object_groups[names.index(a.name)]
+    grp.show_shape_keys = True
+    grp.shape_keys_index = 1                                # "Two"
+    a.shape_key_add(name="Three")
+    mod.refresh_shape_keys(sc)
+    names = [g.object_name for g in settings.object_groups]
+    grp = settings.object_groups[names.index(a.name)]
+    other = settings.object_groups[names.index(b.name)]
+    got = (settings.object_groups[settings.object_groups_index].object_name == a.name, grp.show_shape_keys,
+           grp.shape_keys[grp.shape_keys_index].key_name, other.show_shape_keys)
+    return (got == (True, True, "Two", False), got)
+check("P31c a rebuild keeps expanded meshes and the active rows", p31c)
+
+
+def p31d():
+    reset(); arm = make_arm("Rig"); m = add_mesh(arm); pick(arm)
+    sc.tool_settings.use_keyframe_insert_auto = True
+    m.data.shape_keys.key_blocks["Smile"].value = 0.7       # dragging a slider
+    rebuilt = mod.refresh_shape_keys(sc)
+    m.shape_key_add(name="Frown")
+    mod.refresh_shape_keys(sc)                              # a rebuild with auto-key on
+    ad = m.data.shape_keys.animation_data
+    keyed = [fc.data_path for fc in mod.get_anim_fcurves(ad)] if ad else []
+    sc.tool_settings.use_keyframe_insert_auto = False
+    return ((rebuilt, keyed) == (False, []), (rebuilt, keyed))
+check("P31d moving a slider doesn't rebuild, and rebuilding never keys", p31d)
+
+
+def p31e():
+    reset(); arm = make_arm("Rig"); m = add_mesh(arm); pick(arm)
+    m.shape_key_add(name="Frown")
+    m.data.update()
+    handler_run()
+    via_handler = scanner()
+    pick(None)
+    got = (via_handler, scanner())
+    return (got == ([(m.name, ["Smile", "Frown"])], []), got)
+check("P31e the depsgraph handler refreshes the scanner; unpicking empties it", p31e)
+
+
 def registered_props():
     return sorted(p for p in dir(bpy.types.Scene) + dir(bpy.types.Object) if p.startswith(("rmv2_", "bonemancer_")))
 

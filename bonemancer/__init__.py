@@ -182,38 +182,76 @@ def is_deformed_by(obj, arm_obj):
     return any(mod.type == 'ARMATURE' and mod.object == arm_obj for mod in obj.modifiers)
 
 
+def _scanned_meshes(scene, arm_obj):
+    """(mesh object, (shape key names…)) for each mesh the scanner should list, reference key excluded."""
+    if arm_obj is None:
+        return
+    for obj in scene.objects:
+        if obj.type != 'MESH' or not obj.data.shape_keys or not is_deformed_by(obj, arm_obj):
+            continue
+        reference = obj.data.shape_keys.reference_key
+        yield obj, tuple(kb.name for kb in obj.data.shape_keys.key_blocks if kb != reference)
+
+
+def scanned_shape_keys(scene, arm_obj):
+    return tuple((obj.name, key_names) for obj, key_names in _scanned_meshes(scene, arm_obj))
+
+
+def listed_shape_keys(scene):
+    """The same shape as scanned_shape_keys(), for what the scanner list shows now."""
+    return tuple((grp.object_name, tuple(item.key_name for item in grp.shape_keys))
+                 for grp in scene.bonemancer_shape_keys.object_groups)
+
+
 def scan_shape_keys_for_armature(scene, arm_obj):
+    """Rebuild the scanner list, keeping each mesh's expanded state and active rows."""
     global _suppress_shape_key_update
     settings = scene.bonemancer_shape_keys
+    expanded = {grp.object_name for grp in settings.object_groups if grp.show_shape_keys}
+    active_key = {grp.object_name: grp.shape_keys[grp.shape_keys_index].key_name
+                  for grp in settings.object_groups if 0 <= grp.shape_keys_index < len(grp.shape_keys)}
+    groups = settings.object_groups
+    active_mesh = groups[settings.object_groups_index].object_name \
+        if 0 <= settings.object_groups_index < len(groups) else ""
     settings.object_groups.clear()
 
     # Mirroring the current values must not run BONEMANCER_PG_ShapeKey.on_value,
     # which would insert keyframes when auto-keying is on.
     _suppress_shape_key_update = True
     try:
-        for obj in scene.objects:
-            if obj.type != 'MESH' or not obj.data.shape_keys:
-                continue
-            if not is_deformed_by(obj, arm_obj):
-                continue
-
-            reference = obj.data.shape_keys.reference_key
+        for obj, key_names in _scanned_meshes(scene, arm_obj):
+            mesh_name = obj.name
+            key_blocks = obj.data.shape_keys.key_blocks
             grp = settings.object_groups.add()
-            grp.object_name = obj.name
-            for kb in obj.data.shape_keys.key_blocks:
-                if kb == reference:
-                    continue
+            grp.object_name = mesh_name
+            grp.show_shape_keys = mesh_name in expanded
+            for key_name in key_names:
                 item = grp.shape_keys.add()
-                item.object_name = obj.name
-                item.key_name    = kb.name
-                item.value       = kb.value
+                item.object_name = mesh_name
+                item.key_name    = key_name
+                item.value       = key_blocks[key_name].value
+            if active_key.get(mesh_name) in key_names:
+                grp.shape_keys_index = key_names.index(active_key[mesh_name])
     finally:
         _suppress_shape_key_update = False
+
+    names = [grp.object_name for grp in settings.object_groups]
+    settings.object_groups_index = names.index(active_mesh) if active_mesh in names else 0
+
+
+def refresh_shape_keys(scene):
+    """Rebuild the scanner list if the picked rig's meshes or shape keys changed; True if it did."""
+    arm_obj = get_rig(scene)
+    if scanned_shape_keys(scene, arm_obj) == listed_shape_keys(scene):
+        return False
+    scan_shape_keys_for_armature(scene, arm_obj)
+    return True
 
 class BONEMANCER_OT_scan_shape_keys(bpy.types.Operator):
     bl_idname      = "bonemancer.scan_shape_keys"
     bl_label       = "Scan Rig For Shape Keys"
-    bl_description = "Scans and refreshes the shape key list of the selected rig to identify meshes with shape keys"
+    bl_description = ("Rebuild the list of meshes the rig deforms and their shape keys now. "
+                      "It also refreshes on its own when meshes or shape keys change")
     bl_options     = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -733,12 +771,21 @@ def on_depsgraph_update(scene, depsgraph):
             _armature_change_from_viewport = False
 
     # 3) Only armature/object updates can change bone names or selection
+    redraw = False
     if depsgraph.id_type_updated('ARMATURE') or depsgraph.id_type_updated('OBJECT'):
         changed = update_bone_list(scene)
         changed |= sync_selected_bone(scene, view_layer)
-        if changed or depsgraph.id_type_updated('ARMATURE'):
-            tag_addon_panels(bpy.context)
-    elif depsgraph.id_type_updated('KEY'):
+        redraw = changed or depsgraph.id_type_updated('ARMATURE')
+    if depsgraph.id_type_updated('KEY'):
+        redraw = True
+
+    # 4) Shape Key Scanner: meshes parented/unparented, shape keys added,
+    # renamed or removed. Moving a slider changes neither, so this stays a
+    # comparison while posing or sculpting.
+    if any(depsgraph.id_type_updated(t) for t in ('OBJECT', 'KEY', 'MESH')):
+        redraw |= refresh_shape_keys(scene)
+
+    if redraw:
         tag_addon_panels(bpy.context)
 
 
@@ -2419,6 +2466,7 @@ def on_armature_change(self, context):
     # Bail if invalid
     if not arm_obj:
         update_bone_list(scene)
+        scan_shape_keys_for_armature(scene, None)   # empties the list
         return
 
     view_layer = context.view_layer

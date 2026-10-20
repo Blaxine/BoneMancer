@@ -35,7 +35,8 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
   rig and bone set entries are updated; names that already exist are refused.
 - **Shape Key Scanner.** Lists the shape keys of every mesh the rig deforms
   (parented to it at any depth, or with an Armature modifier on it), with
-  sliders and a keyframe toggle for the current frame.
+  sliders and a keyframe toggle for the current frame. The list keeps itself
+  up to date as you add, rename or remove shape keys or skin new meshes.
 - **Rig Check.** One click lists what's wrong with the rig: constraints with
   no target, drivers that can't evaluate, left/right bones with no partner,
   deform bones without weights (and weighted bones with Deform off), and setup

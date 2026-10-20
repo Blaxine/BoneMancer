@@ -93,6 +93,10 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
 
 - [ ] **Scan Rig For Shape Keys** lists meshes deformed by the rig, without
       their Basis key.
+- [ ] Without clicking Scan: adding, renaming or removing a shape key, and
+      parenting a new mesh to the rig (or removing its Armature modifier),
+      update the list right away; an expanded mesh stays expanded. Dragging a
+      slider or sculpting doesn't make the panel flicker or lag.
 - [ ] Sliders change the shape; with auto-keying on, scanning adds no keys.
 - [ ] The key button inserts a key on the current frame and removes it on a
       second click; the Dope Sheet updates.
