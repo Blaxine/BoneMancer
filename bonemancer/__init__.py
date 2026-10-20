@@ -9,6 +9,9 @@ from bpy.types import UIList, Operator, Panel, PropertyGroup
 
 _armature_change_from_viewport = False
 _suppress_shape_key_update = False
+# True while the add-on itself moves the Bone Picker highlight, so the move
+# isn't mistaken for a click that should select the bone in the viewport
+_quiet_picker = False
 # Blender only borrows the strings returned by dynamic enum callbacks, so they
 # must stay referenced from Python or the UI shows garbage / lookups fail.
 _enum_items_cache = {}
@@ -104,7 +107,11 @@ class BONEMANCER_PG_BoneSet(PropertyGroup):
 class BONEMANCER_PG_Settings(PropertyGroup):
     # The bone picker list
     bone_selection: CollectionProperty(type=BONEMANCER_PG_PickerBone)
-    bone_selection_index: IntProperty(name="Index", default=0)
+    # Clicking a row selects that bone in the viewport
+    bone_selection_index: IntProperty(
+        name="Index", default=0,
+        update=lambda self, ctx: on_picker_index(self, ctx),
+    )
     # Armature the bone_selection list was built from (for rename tracking)
     bone_list_owner: PointerProperty(type=bpy.types.Object)
     # Last picked rig; also how versions up to 1.0 remembered the pick (see migration)
@@ -544,20 +551,126 @@ def update_bone_list(scene):
         item.name = name
 
     settings.bone_list_owner = arm_obj
-    settings.bone_selection_index = min(settings.bone_selection_index, max(len(names) - 1, 0))
+    set_picker_index(settings, min(settings.bone_selection_index, max(len(names) - 1, 0)))
     return True
+
+
+def set_picker_index(settings, index):
+    """Move the Bone Picker highlight without selecting anything; True if it moved."""
+    global _quiet_picker
+    if settings.bone_selection_index == index:
+        return False
+    _quiet_picker = True
+    try:
+        settings.bone_selection_index = index
+    finally:
+        _quiet_picker = False
+    return True
+
+
+def viewport_bone(ob):
+    """Name of ob's active bone if selected, else its first selected bone, else ''."""
+    if ob.mode == 'EDIT':
+        bones = ob.data.edit_bones
+        active = bones.active
+        if active and active.select:
+            return active.name
+        return next((b.name for b in bones if b.select), "")
+    active = ob.data.bones.active
+    pb = ob.pose.bones.get(active.name) if active else None
+    if pb and bone_is_selected(pb):
+        return pb.name
+    return next((pb.name for pb in ob.pose.bones if bone_is_selected(pb)), "")
 
 
 def sync_selected_bone(scene, view_layer):
-    """Mirror the first selected pose bone into scene.bonemancer_selected_bone; True if it changed."""
+    """
+    Mirror the bone selected in the viewport into scene.bonemancer_selected_bone
+    and the Bone Picker highlight; True if either changed.
+    """
     ob = view_layer.objects.active if view_layer else None
-    if not (ob and ob.type == 'ARMATURE' and ob.mode == 'POSE'):
+    if not (ob and ob.type == 'ARMATURE' and ob.mode in {'POSE', 'EDIT'}):
         return False
-    selected = next((pb.name for pb in ob.pose.bones if bone_is_selected(pb)), "")
-    if scene.bonemancer_selected_bone == selected:
-        return False
-    scene.bonemancer_selected_bone = selected
-    return True
+    selected = viewport_bone(ob)
+    changed = scene.bonemancer_selected_bone != selected
+    if changed:
+        scene.bonemancer_selected_bone = selected
+
+    settings = scene.bonemancer_settings
+    items = settings.bone_selection
+    idx = settings.bone_selection_index
+    if selected and ob == get_rig(scene) and not (0 <= idx < len(items) and items[idx].name == selected):
+        idx = next((i for i, item in enumerate(items) if item.name == selected), -1)
+        if idx >= 0:
+            changed |= set_picker_index(settings, idx)
+    return changed
+
+
+def select_bone_in_viewport(context, obj, bone_name):
+    """
+    Make bone_name the only selected bone of obj, and its active bone, showing
+    it if hidden. In armature Edit Mode the edit bone is selected; otherwise obj
+    becomes active in Pose Mode. Returns an error message, or '' on success.
+    """
+    if not obj:
+        return "No valid armature"
+    if context.view_layer.objects.get(obj.name) != obj:
+        return f"'{obj.name}' is not in the current view layer"
+    if not rig_is_editable(obj):
+        return "Rig is linked from a library; make a library override first"
+
+    if obj.mode == 'EDIT':
+        eb = obj.data.edit_bones.get(bone_name)
+        if not eb:
+            return f"Bone '{bone_name}' not found"
+        for b in obj.data.edit_bones:
+            b.select = b.select_head = b.select_tail = False
+        eb.hide = False
+        eb.select = eb.select_head = eb.select_tail = True
+        obj.data.edit_bones.active = eb
+        return ""
+
+    pb = obj.pose.bones.get(bone_name)
+    if not pb:
+        return f"Bone '{bone_name}' not found"
+
+    obj.hide_set(False)
+    obj.hide_viewport = False
+    if not (obj.mode == 'POSE' and context.view_layer.objects.active == obj):
+        if context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        context.view_layer.objects.active = obj
+        obj.select_set(True)
+        bpy.ops.object.mode_set(mode='POSE')
+
+    for p in obj.pose.bones:
+        set_bone_selected(p, False)
+    set_hidden(pb, False)
+    set_bone_selected(pb, True)
+    obj.data.bones.active = pb.bone
+    return ""
+
+
+def on_picker_index(settings, context):
+    """A click in the Bone Picker selects that bone in the viewport."""
+    if _quiet_picker:
+        return
+    idx = settings.bone_selection_index
+    if not 0 <= idx < len(settings.bone_selection):
+        return
+    scene = settings.id_data
+    # Like picking a rig: don't pull the user out of sculpt/paint/other edit modes
+    if scene != context.scene or context.mode not in {'OBJECT', 'POSE', 'EDIT_ARMATURE'}:
+        return
+    arm_obj = get_rig(scene)
+    if context.mode == 'EDIT_ARMATURE' and arm_obj and arm_obj.mode != 'EDIT':
+        return
+    try:
+        error = select_bone_in_viewport(context, arm_obj, settings.bone_selection[idx].name)
+    except RuntimeError as e:
+        error = str(e)
+    if error:
+        print(f"Bonemancer: {error}")
 
 
 @persistent
@@ -601,42 +714,10 @@ class BONEMANCER_OT_select_bone(bpy.types.Operator):
     bone_name: bpy.props.StringProperty()
 
     def execute(self, context):
-        obj = get_rig(context.scene)
-        if not obj:
-            self.report({'WARNING'}, "No valid armature")
+        error = select_bone_in_viewport(context, get_rig(context.scene), self.bone_name)
+        if error:
+            self.report({'WARNING'}, error)
             return {'CANCELLED'}
-        if context.view_layer.objects.get(obj.name) != obj:
-            self.report({'WARNING'}, f"'{obj.name}' is not in the current view layer")
-            return {'CANCELLED'}
-        if not rig_is_editable(obj):
-            self.report({'WARNING'}, "Rig is linked from a library; make a library override first")
-            return {'CANCELLED'}
-
-        # pick our bone
-        pb = obj.pose.bones.get(self.bone_name)
-        if not pb:
-            self.report({'WARNING'}, f"Bone '{self.bone_name}' not found")
-            return {'CANCELLED'}
-
-        # ensure armature visible
-        obj.hide_set(False)
-        obj.hide_viewport = False
-
-        # Object mode → Pose mode
-        if context.mode != 'OBJECT':
-            bpy.ops.object.mode_set(mode='OBJECT')
-        context.view_layer.objects.active = obj
-        obj.select_set(True)
-        bpy.ops.object.mode_set(mode='POSE')
-
-        # deselect all bones
-        for p in obj.pose.bones:
-            set_bone_selected(p, False)
-
-        # unhide & select target
-        set_hidden(pb, False)
-        set_bone_selected(pb, True)
-        obj.data.bones.active = pb.bone
         return {'FINISHED'}
 
 class BONEMANCER_OT_toggle_bone(bpy.types.Operator):

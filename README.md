@@ -14,7 +14,8 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
   the rig in Pose Mode (only from Object, Pose or armature Edit Mode, so a
   sculpt or paint session isn't interrupted).
 - **Bone Picker.** Every bone of the rig, with buttons to add it to a bone set,
-  rename it, or show its parent and children.
+  rename it, or show its parent and children. Click a bone to select it in the
+  viewport; select one in the viewport and its row is highlighted.
 - **Bone Sets.** Named lists of bones stored on the rig, so they travel with it
   when you append or link it. For each set: expand, hide/show all its bones,
   delete. For each bone in a set:

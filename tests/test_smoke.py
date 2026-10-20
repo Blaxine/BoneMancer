@@ -406,6 +406,94 @@ def leftover_handlers():
     return [h.__name__ for h in hs if h.__module__ == mod.__name__]
 
 
+def pose_selected(arm):
+    return [pb.name for pb in arm.pose.bones if mod.bone_is_selected(pb)]
+
+
+def edit_selected(arm):
+    return [eb.name for eb in arm.data.edit_bones if eb.select]
+
+
+def picker():
+    return sc.bonemancer_settings
+
+
+def p27():
+    reset(); arm = make_arm("Rig", ("a", "b", "c")); pick(arm, from_viewport=False)
+    mod.set_bone_selected(arm.pose.bones["a"], True)
+    picker().bone_selection_index = 1
+    got = (bpy.context.mode, pose_selected(arm), arm.data.bones.active.name)
+    return (got == ('POSE', ["b"], "b"), got)
+check("P27 Bone Picker click selects that bone in Pose Mode", p27)
+
+
+def p27b():
+    reset(); arm = make_arm("Rig", ("a", "b", "c")); pick(arm)
+    picker().bone_selection_index = 2
+    got = (bpy.context.mode, pose_selected(arm), arm.data.bones.active.name)
+    return (got == ('POSE', ["c"], "c"), got)
+check("P27b Bone Picker click from Object Mode enters Pose Mode", p27b)
+
+
+def p27c():
+    reset(); arm = make_arm("Rig", ("a", "b", "c")); pick(arm)
+    bpy.context.view_layer.objects.active = arm; bpy.ops.object.mode_set(mode='EDIT')
+    picker().bone_selection_index = 1
+    got = (bpy.context.mode, edit_selected(arm), arm.data.edit_bones.active.name)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return (got == ('EDIT_ARMATURE', ["b"], "b"), got)
+check("P27c Bone Picker click in Edit Mode selects the edit bone", p27c)
+
+
+def p27d():
+    reset(); arm = make_arm("Rig", ("a", "b")); pick(arm)
+    bpy.ops.mesh.primitive_cube_add(); bpy.ops.object.mode_set(mode='SCULPT')
+    picker().bone_selection_index = 1
+    got = (bpy.context.mode, pose_selected(arm))
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return (got == ('SCULPT', []), got)
+check("P27d Bone Picker click doesn't leave Sculpt Mode", p27d)
+
+
+def p28():
+    reset(); arm = make_arm("Rig", ("a", "b", "c")); pick(arm, from_viewport=False)
+    for name in ("b", "c"):
+        mod.set_bone_selected(arm.pose.bones[name], True)
+    arm.data.bones.active = arm.data.bones["c"]
+    handler_run()
+    got = (picker().bone_selection_index, pose_selected(arm))
+    return (got == (2, ["b", "c"]), got)
+check("P28 viewport selection highlights the active bone in the Bone Picker", p28)
+
+
+def p28b():
+    reset(); arm = make_arm("Rig", ("a", "b", "c")); pick(arm, from_viewport=False)
+    picker().bone_selection_index = 2
+    bpy.ops.object.mode_set(mode='EDIT')
+    for eb in arm.data.edit_bones:
+        eb.select = eb.select_head = eb.select_tail = False
+    eb = arm.data.edit_bones["a"]; eb.select = True; arm.data.edit_bones.active = eb
+    handler_run()
+    got = (picker().bone_selection_index, edit_selected(arm))
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return (got == (0, ["a"]), got)
+check("P28b Edit Mode selection highlights the bone in the Bone Picker", p28b)
+
+
+def p28c():
+    reset(); arm = make_arm("Rig", ("a", "b", "c")); pick(arm, from_viewport=False)
+    picker().bone_selection_index = 2
+    bpy.ops.object.mode_set(mode='EDIT')
+    for eb in arm.data.edit_bones:
+        eb.select = eb.select_head = eb.select_tail = False
+    arm.data.edit_bones.remove(arm.data.edit_bones["c"])
+    handler_run()
+    got = (picker().bone_selection_index, edit_selected(arm))
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return (got == (1, []), got)
+check("P28c shrinking the bone list moves the highlight without selecting", p28c)
+
+
 def registered_props():
     return sorted(p for p in dir(bpy.types.Scene) + dir(bpy.types.Object) if p.startswith(("rmv2_", "bonemancer_")))
 

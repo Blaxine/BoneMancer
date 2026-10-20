@@ -26,6 +26,10 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
 - [ ] In Sculpt Mode on a mesh, picking a rig from the list does **not** leave
       Sculpt Mode.
 - [ ] The Bone Picker lists every bone; the list scrolls and filters.
+- [ ] Clicking a bone in the Bone Picker selects it (and only it) in the
+      viewport and makes it active, in Object, Pose and Edit Mode.
+- [ ] Clicking a bone in the viewport highlights its row in the Bone Picker,
+      whether or not it is in a bone set.
 - [ ] Relations (i) shows parent and children.
 - [ ] Rename: each mode (Exact / Prefix / Suffix / Replace) updates the preview
       live; the driver and constraint counts look right; an existing name shows
