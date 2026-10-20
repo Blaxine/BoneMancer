@@ -30,6 +30,12 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
       viewport and makes it active, in Object, Pose and Edit Mode.
 - [ ] Clicking a bone in the viewport highlights its row in the Bone Picker,
       whether or not it is in a bone set.
+- [ ] Shift-click several bones in the viewport (Pose and Edit Mode): every
+      selected bone's row is highlighted; Ctrl-click one off and its highlight
+      goes. Hidden bones are never highlighted.
+- [ ] **Add Selected to Bone Set (n)** shows the selected count, is disabled with
+      nothing selected, and adds all of them to a new or existing set in one
+      click, skipping ones already in it.
 - [ ] Relations (i) shows parent and children.
 - [ ] Rename: each mode (Exact / Prefix / Suffix / Replace) updates the preview
       live; the driver and constraint counts look right; an existing name shows

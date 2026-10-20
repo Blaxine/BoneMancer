@@ -583,6 +583,28 @@ def viewport_bone(ob):
     return next((pb.name for pb in ob.pose.bones if bone_is_selected(pb)), "")
 
 
+def bone_selected_in_viewport(ob, bone_name):
+    """True if ob's bone is selected and visible (edit bone in Edit Mode, pose bone otherwise)."""
+    if ob.mode == 'EDIT':
+        eb = ob.data.edit_bones.get(bone_name)
+        return bool(eb and eb.select and not eb.hide)
+    pb = ob.pose.bones.get(bone_name) if ob.pose else None
+    return bool(pb and bone_is_selected(pb) and not is_hidden(pb))
+
+
+def selected_bone_names(ob):
+    """ob's selected, visible bones in armature order."""
+    if not ob or ob.type != 'ARMATURE':
+        return []
+    bones = ob.data.edit_bones if ob.mode == 'EDIT' else ob.data.bones
+    return [b.name for b in bones if bone_selected_in_viewport(ob, b.name)]
+
+
+# Selected bones of the picked rig as of the last handler run; a change means
+# the Bone Picker must redraw its highlights
+_picker_selection = ()
+
+
 def sync_selected_bone(scene, view_layer):
     """
     Mirror the bone selected in the viewport into scene.bonemancer_selected_bone
@@ -595,6 +617,13 @@ def sync_selected_bone(scene, view_layer):
     changed = scene.bonemancer_selected_bone != selected
     if changed:
         scene.bonemancer_selected_bone = selected
+
+    global _picker_selection
+    if ob == get_rig(scene):
+        names = tuple(selected_bone_names(ob))
+        if names != _picker_selection:
+            _picker_selection = names
+            changed = True
 
     settings = scene.bonemancer_settings
     items = settings.bone_selection
@@ -1113,6 +1142,8 @@ class BONEMANCER_OT_add_bone_to_set(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     bone_name: StringProperty(options={'HIDDEN'})
+    # Add every selected bone of the picked rig instead of bone_name
+    use_selected: BoolProperty(name="Selected Bones", default=False, options={'HIDDEN', 'SKIP_SAVE'})
     set_enum: EnumProperty(name="Bone Set", items=get_set_items)
     create_new: BoolProperty(name="New Bone Set", default=False)
     new_set_name: StringProperty(name="Bone Set Name", default="")
@@ -1121,13 +1152,28 @@ class BONEMANCER_OT_add_bone_to_set(bpy.types.Operator):
     def poll(cls, context):
         return get_rig(context.scene) is not None
 
+    @classmethod
+    def description(cls, context, properties):
+        if properties.use_selected:
+            return "Add every selected bone to a new or existing bone set"
+        return cls.bl_description
+
+    def bone_names(self, context):
+        if self.use_selected:
+            return selected_bone_names(get_rig(context.scene))
+        return [self.bone_name]
+
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text=self.bone_name, icon='BONE_DATA')
+        if self.use_selected:
+            names = self.bone_names(context)
+            layout.label(text=f"{len(names)} selected bone{'s' if len(names) != 1 else ''}", icon='GROUP_BONE')
+        else:
+            layout.label(text=self.bone_name, icon='BONE_DATA')
         layout.prop(self, "create_new")
         if self.create_new:
             layout.prop(self, "new_set_name", text="Name")
@@ -1138,6 +1184,10 @@ class BONEMANCER_OT_add_bone_to_set(bpy.types.Operator):
         arm_obj = get_rig(context.scene)
         if not rig_is_editable(arm_obj):
             self.report({'ERROR'}, "Rig is linked from a library; make a library override first")
+            return {'CANCELLED'}
+        bone_names = self.bone_names(context)
+        if not bone_names:
+            self.report({'WARNING'}, "Select some bones first")
             return {'CANCELLED'}
 
         # 1) Groups live on the rig object itself
@@ -1161,15 +1211,18 @@ class BONEMANCER_OT_add_bone_to_set(bpy.types.Operator):
             group = groups.add()
             group.name = name
 
-        # 4) Add our bone if it's missing
-        if self.bone_name not in [b.bone_name for b in group.bones]:
-            entry = group.bones.add()
-            entry.bone_name = self.bone_name
-        else:
-            self.report(
-                {'INFO'},
-                f"'{self.bone_name}' already in '{group.name}'"
-            )
+        # 4) Add the bones that are missing, in armature order
+        present = {b.bone_name for b in group.bones}
+        added = [name for name in bone_names if name not in present]
+        for name in added:
+            group.bones.add().bone_name = name
+
+        if len(bone_names) == 1 and not added:
+            self.report({'INFO'}, f"'{bone_names[0]}' already in '{group.name}'")
+        elif len(bone_names) > 1:
+            skipped = len(bone_names) - len(added)
+            self.report({'INFO'}, f"Added {len(added)} bone{'s' if len(added) != 1 else ''} to '{group.name}'"
+                                  + (f"; {skipped} already in it" if skipped else ""))
 
         return {'FINISHED'}
 
@@ -1308,7 +1361,14 @@ class BONEMANCER_PT_rig(bpy.types.Panel):
 
             # Bone Picker box
             box = layout.box()
-            box.label(text="Bone Picker")
+            header = box.row()
+            header.label(text="Bone Picker")
+            count = len(selected_bone_names(get_rig(scene)))
+            add_row = header.row()
+            add_row.enabled = count > 0
+            op = add_row.operator("bonemancer.add_bone_to_set",
+                                  text=f"Add Selected to Bone Set ({count})", icon='ADD')
+            op.use_selected = True
             box.template_list(
                     "BONEMANCER_UL_bone_picker",
                     "",
@@ -1531,7 +1591,13 @@ class BONEMANCER_UL_bone_picker(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon,
                   active_data, active_propname, index):
         row = layout.row(align=True)
-        row.label(text=item.name, icon='BONE_DATA')
+        rig = get_rig(context.scene)
+        if rig and bone_selected_in_viewport(rig, item.name):
+            # Selected in the viewport: drawn pressed, like the Bone Sets select button
+            op = row.operator("bonemancer.select_bone", text=item.name, icon='BONE_DATA', depress=True)
+            op.bone_name = item.name
+        else:
+            row.label(text=item.name, icon='BONE_DATA')
         row.separator(factor=1.0)
 
         # Add to Collection

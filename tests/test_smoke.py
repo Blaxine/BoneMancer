@@ -494,6 +494,70 @@ def p28c():
 check("P28c shrinking the bone list moves the highlight without selecting", p28c)
 
 
+def select_in_pose(arm, names):
+    bpy.context.view_layer.objects.active = arm
+    if arm.mode != 'POSE':
+        bpy.ops.object.mode_set(mode='POSE')
+    for pb in arm.pose.bones:
+        mod.set_bone_selected(pb, pb.name in names)
+
+
+def p28d():
+    reset(); arm = make_arm("Rig", ("a", "b", "c", "d")); pick(arm, from_viewport=False)
+    select_in_pose(arm, ("b", "d"))
+    arm.data.bones.active = arm.data.bones["d"]                # the active bone won't change below
+    handler_run()
+    first = mod._picker_selection
+    mod.set_bone_selected(arm.pose.bones["b"], False)          # ctrl-click off a non-active bone
+    redraw = mod.sync_selected_bone(sc, bpy.context.view_layer)
+    for i, item in enumerate(picker().bone_selection):
+        mod.BONEMANCER_UL_bone_picker.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
+    mod.BONEMANCER_PT_rig.draw(FakePanel(), bpy.context)
+    got = (first, redraw, mod._picker_selection,
+           [it.name for it in picker().bone_selection if mod.bone_selected_in_viewport(arm, it.name)])
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return (got == (("b", "d"), True, ("d",), ["d"]), got)
+check("P28d every selected bone is highlighted, and any selection change redraws", p28d)
+
+
+def p28e():
+    reset(); arm = make_arm("Rig", ("a", "b", "c", "d")); pick(arm, from_viewport=False)
+    select_in_pose(arm, ("d", "b"))
+    mod.set_hidden(arm.pose.bones["c"], True)
+    mod.set_bone_selected(arm.pose.bones["c"], True)            # hidden bones don't count
+    r1 = bpy.ops.bonemancer.add_bone_to_set(use_selected=True, create_new=True, new_set_name="Picked")
+    select_in_pose(arm, ("a", "b"))
+    r2 = bpy.ops.bonemancer.add_bone_to_set(use_selected=True, set_enum="Picked")
+    bpy.ops.object.mode_set(mode='OBJECT')
+    got = (r1, r2, [b.bone_name for b in arm.bonemancer_sets["Picked"].bones])
+    return (got == ({'FINISHED'}, {'FINISHED'}, ["b", "d", "a"]), got)
+check("P28e Add Selected adds every selected visible bone once, in armature order", p28e)
+
+
+def p28f():
+    reset(); arm = make_arm("Rig", ("a", "b", "c")); pick(arm, from_viewport=False)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode='EDIT')
+    for eb in arm.data.edit_bones:
+        eb.select = eb.name in ("a", "c")
+    r = bpy.ops.bonemancer.add_bone_to_set(use_selected=True, create_new=True, new_set_name="Edit")
+    bpy.ops.object.mode_set(mode='OBJECT')
+    got = (r, [b.bone_name for b in arm.bonemancer_sets["Edit"].bones])
+    return (got == ({'FINISHED'}, ["a", "c"]), got)
+check("P28f Add Selected uses the edit-bone selection in Edit Mode", p28f)
+
+
+def p28g():
+    reset(); arm = make_arm("Rig", ("a", "b")); pick(arm, from_viewport=False)
+    select_in_pose(arm, ())
+    r = bpy.ops.bonemancer.add_bone_to_set(use_selected=True, create_new=True, new_set_name="None")
+    bpy.ops.object.mode_set(mode='OBJECT')
+    valid = {i.identifier for i in bpy.types.UILayout.bl_rna.functions["label"].parameters["icon"].enum_items}
+    got = (r, len(arm.bonemancer_sets), 'GROUP_BONE' in valid)
+    return (got == ({'CANCELLED'}, 0, True), got)
+check("P28g Add Selected with nothing selected changes nothing", p28g)
+
+
 def p29():
     global sc
     reset(); arm = make_arm("Rig"); pick(arm, from_viewport=False)

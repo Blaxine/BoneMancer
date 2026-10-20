@@ -15,7 +15,8 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
   sculpt or paint session isn't interrupted).
 - **Bone Picker.** Every bone of the rig, with buttons to add it to a bone set,
   rename it, or show its parent and children. Click a bone to select it in the
-  viewport; select one in the viewport and its row is highlighted.
+  viewport; bones selected in the viewport are highlighted, and **Add Selected
+  to Bone Set** puts all of them into a new or existing set in one go.
 - **Bone Sets.** Named lists of bones stored on the rig, so they travel with it
   when you append or link it. For each set: expand, hide/show all its bones,
   delete. For each bone in a set:
