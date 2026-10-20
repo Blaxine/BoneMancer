@@ -1478,25 +1478,9 @@ class BONEMANCER_UL_constraints(bpy.types.UIList):
             row = layout.row(align=True)
 
             # --- Constraint validity check ---
-            show_warning = False
-            tooltip_text = ""
-
-            if hasattr(item, "is_valid") and not item.is_valid:
-                show_warning = True
-                tooltip_text = "Constraint is not valid"
-            else:
-                if hasattr(item, "target") and not item.target:
-                    show_warning = True
-                    tooltip_text = "Missing target object"
-                if (
-                    hasattr(item, "subtarget")
-                    and getattr(item, "target", None)
-                    and item.subtarget
-                ):
-                    arm = getattr(item.target, "data", None)
-                    if getattr(arm, "bones", None) and item.subtarget not in arm.bones:
-                        show_warning = True
-                        tooltip_text = f"Bone '{item.subtarget}' not found on target"
+            problem = constraint_problem(item)
+            show_warning = bool(problem)
+            tooltip_text = f"Constraint {problem}"
 
             # Name & influence
             row.label(text=item.name, icon='CONSTRAINT')
@@ -1569,6 +1553,244 @@ class BONEMANCER_UL_bone_picker(bpy.types.UIList):
         op.bone_name = item.name
 
 
+# --- Rig Check -----------------------------------------------------------
+# An on-demand list of problems with the picked rig. Issues hold names only:
+# ID pointers would count as users and keep deleted objects in the file.
+
+# check id -> (heading, icon, explanation lines). The ids are stored in
+# saved ignores, so they must never change.
+RIG_CHECKS = {
+    'constraint': (
+        "Broken constraints", 'CONSTRAINT_BONE',
+        ("A constraint with no target, or aimed at a bone that doesn't exist,",
+         "does nothing, so the bone stops following the rest of the rig.",
+         "Fix: in Bone Properties > Bone Constraints, set the Target (and",
+         "its Bone field), or delete the constraint if it isn't needed."),
+    ),
+}
+
+
+def constraint_problem(con):
+    """What's wrong with a constraint, as the end of a sentence, or '' if it works."""
+    if getattr(con, "is_valid", True):
+        return ""
+    target = getattr(con, "target", None)
+    if hasattr(con, "target") and not target:
+        return "has no target"
+    sub = getattr(con, "subtarget", "")
+    bones = getattr(getattr(target, "data", None), "bones", None)
+    if sub and bones is not None and sub not in bones:
+        return f"targets missing bone '{sub}'"
+    return "is not valid"
+
+
+def find_constraint_issues(rig):
+    for pb in rig.pose.bones:
+        for con in pb.constraints:
+            problem = constraint_problem(con)
+            if problem:
+                yield pb.name, con.name, f"{pb.name}: {con.name} {problem}", ""
+
+
+# Checks run in this order, which is also the order results are listed in.
+# Each finder yields (bone, detail, message, object_name) per issue.
+RIG_CHECK_FINDERS = [
+    ('constraint', find_constraint_issues),
+]
+
+
+class BONEMANCER_PG_Issue(PropertyGroup):
+    check: StringProperty(name="Check")
+    bone: StringProperty(name="Bone")
+    detail: StringProperty(name="Detail")
+    message: StringProperty(name="Message")
+    # What Select selects when the issue isn't about a bone
+    object_name: StringProperty(name="Object")
+
+
+class BONEMANCER_PG_RigCheck(PropertyGroup):
+    issues: CollectionProperty(type=BONEMANCER_PG_Issue)
+    issues_index: IntProperty(default=0)
+    has_run: BoolProperty(default=False)
+
+
+def clear_rig_check(scene):
+    results = scene.bonemancer_rig_check
+    results.issues.clear()
+    results.issues_index = 0
+    results.has_run = False
+
+
+def run_rig_check(context, rig):
+    """Replace the scene's results with a fresh check of rig; returns the issue count."""
+    results = context.scene.bonemancer_rig_check
+    results.issues.clear()
+    # Validity flags are only refreshed when the depsgraph evaluates
+    context.view_layer.update()
+    for check_id, finder in RIG_CHECK_FINDERS:
+        for bone, detail, message, object_name in finder(rig):
+            issue = results.issues.add()
+            issue.check = check_id
+            issue.bone = bone
+            issue.detail = detail
+            issue.message = message
+            issue.object_name = object_name
+    results.issues_index = 0
+    results.has_run = True
+    return len(results.issues)
+
+
+def visible_issues(scene):
+    return list(scene.bonemancer_rig_check.issues)
+
+
+def get_issue(scene, index):
+    issues = scene.bonemancer_rig_check.issues
+    return issues[index] if 0 <= index < len(issues) else None
+
+
+def select_object_in_viewport(context, obj):
+    """Make obj the only selected object and the active one. Returns an error message, or ''."""
+    if not obj:
+        return "Object not found"
+    if context.view_layer.objects.get(obj.name) != obj:
+        return f"'{obj.name}' is not in the current view layer"
+    if context.mode != 'OBJECT':
+        return f"Switch to Object Mode to select '{obj.name}'"
+    for other in context.view_layer.objects:
+        if other.select_get():
+            other.select_set(False)
+    obj.hide_set(False)
+    obj.select_set(True)
+    context.view_layer.objects.active = obj
+    return ""
+
+
+class BONEMANCER_OT_check_rig(bpy.types.Operator):
+    bl_idname = "bonemancer.check_rig"
+    bl_label = "Check Rig"
+    bl_description = "List problems with the picked rig. Nothing in the rig is changed"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return get_rig(context.scene) is not None
+
+    def execute(self, context):
+        rig = get_rig(context.scene)
+        if not rig:
+            self.report({'WARNING'}, "Select an armature first")
+            return {'CANCELLED'}
+        count = run_rig_check(context, rig)
+        self.report({'INFO'}, f"{count} issue{'s' if count != 1 else ''} found" if count else "No issues found")
+        tag_addon_panels(context)
+        return {'FINISHED'}
+
+
+class BONEMANCER_OT_select_issue(bpy.types.Operator):
+    bl_idname = "bonemancer.select_issue"
+    bl_label = "Select"
+    bl_description = "Select the bone or object this issue is about"
+    bl_options = {'REGISTER', 'UNDO'}
+    index: IntProperty()
+
+    def execute(self, context):
+        issue = get_issue(context.scene, self.index)
+        if not issue:
+            return {'CANCELLED'}
+        if issue.bone:
+            error = select_bone_in_viewport(context, get_rig(context.scene), issue.bone)
+        else:
+            error = select_object_in_viewport(context, bpy.data.objects.get(issue.object_name))
+        if error:
+            self.report({'WARNING'}, error)
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+class BONEMANCER_OT_explain_issue(bpy.types.Operator):
+    bl_idname = "bonemancer.explain_issue"
+    bl_label = "Explain"
+    bl_description = "Why this matters and how to fix it"
+    bl_options = {'INTERNAL'}
+    index: IntProperty()
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=420)
+
+    def draw(self, context):
+        layout = self.layout
+        issue = get_issue(context.scene, self.index)
+        if not issue or issue.check not in RIG_CHECKS:
+            layout.label(text="Check the rig again", icon='INFO')
+            return
+        heading, icon, lines = RIG_CHECKS[issue.check]
+        layout.label(text=issue.message, icon=icon)
+        layout.separator()
+        col = layout.column(align=True)
+        for line in lines:
+            col.label(text=line)
+
+    def execute(self, context):
+        return {'FINISHED'}
+
+
+class BONEMANCER_UL_rig_issues(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        row = layout.row(align=True)
+        check_icon = RIG_CHECKS.get(item.check, ("", 'ERROR', ()))[1]
+        row.label(text=item.message, icon=check_icon)
+        op = row.operator("bonemancer.select_issue", text="", icon='RESTRICT_SELECT_OFF')
+        op.index = index
+        op = row.operator("bonemancer.explain_issue", text="", icon='INFO')
+        op.index = index
+
+
+class BONEMANCER_PT_rig_check(bpy.types.Panel):
+    bl_label = "Rig Check"
+    bl_idname = "BONEMANCER_PT_rig_check"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Bonemancer'
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header_preset(self, context):
+        results = context.scene.bonemancer_rig_check
+        if results.has_run and get_rig(context.scene):
+            count = len(visible_issues(context.scene))
+            self.layout.label(text=str(count), icon='ERROR' if count else 'CHECKMARK')
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        if not get_rig(scene):
+            layout.label(text="Select an armature", icon='ERROR')
+            return
+
+        layout.operator("bonemancer.check_rig", icon='VIEWZOOM')
+        results = scene.bonemancer_rig_check
+        if not results.has_run:
+            return
+        layout.label(text="New problems show up the next time you check", icon='INFO')
+
+        issues = visible_issues(scene)
+        if not issues:
+            layout.label(text="No issues found", icon='CHECKMARK')
+            return
+
+        col = layout.column(align=True)
+        for check_id, (heading, icon, _lines) in RIG_CHECKS.items():
+            count = sum(1 for issue in issues if issue.check == check_id)
+            if count:
+                col.label(text=f"{heading}: {count}", icon=icon)
+        layout.template_list(
+            "BONEMANCER_UL_rig_issues", "",
+            results, "issues",
+            results, "issues_index",
+            rows=6,
+        )
+
+
 classes = [
     # PropertyGroups
     BONEMANCER_PG_SetBone,
@@ -1579,6 +1801,8 @@ classes = [
     BONEMANCER_PG_Settings,
     BONEMANCER_PG_ShapeKeyScanner,
     BONEMANCER_PG_ImportItem,
+    BONEMANCER_PG_Issue,
+    BONEMANCER_PG_RigCheck,
 
     # Operators
     BONEMANCER_OT_import_bone_collections,
@@ -1597,15 +1821,20 @@ classes = [
     BONEMANCER_OT_toggle_shape_keys,
     BONEMANCER_OT_toggle_shape_keyframe,
     BONEMANCER_OT_show_constraint_error,
+    BONEMANCER_OT_check_rig,
+    BONEMANCER_OT_select_issue,
+    BONEMANCER_OT_explain_issue,
     # UILists
     BONEMANCER_UL_constraints,
     BONEMANCER_UL_bone_picker,
     BONEMANCER_UL_shape_key_meshes,
     BONEMANCER_UL_shape_keys,
+    BONEMANCER_UL_rig_issues,
 
     # Panels
     BONEMANCER_PT_rig,
     BONEMANCER_PT_bone_sets,
+    BONEMANCER_PT_rig_check,
     BONEMANCER_PT_shape_keys
 ]
 
@@ -1631,6 +1860,8 @@ def on_armature_change(self, context):
     """
     scene = self  # the Scene that owns bonemancer_rig (may differ from context.scene)
     arm_obj = get_rig(scene)
+    # Rig Check results describe the previous rig
+    clear_rig_check(scene)
 
     # Bail if invalid
     if not arm_obj:
@@ -1799,7 +2030,8 @@ def _deferred_init():
     return None
 
 
-SCENE_PROPS = ["bonemancer_rig", "bonemancer_settings", "bonemancer_shape_keys", "bonemancer_selected_bone"]
+SCENE_PROPS = ["bonemancer_rig", "bonemancer_settings", "bonemancer_shape_keys", "bonemancer_selected_bone",
+               "bonemancer_rig_check"]
 OBJECT_PROPS = ["bonemancer_sets"]
 
 
@@ -1826,6 +2058,8 @@ def register():
     )
     # Changes to this string tell the depsgraph handler to redraw the panels
     bpy.types.Scene.bonemancer_selected_bone = StringProperty()
+    # Last Rig Check results; names only, so they keep nothing alive
+    bpy.types.Scene.bonemancer_rig_check = PointerProperty(type=BONEMANCER_PG_RigCheck)
 
     # 3) Groups are stored on the rig object, so they follow it through
     # renames and across scenes.

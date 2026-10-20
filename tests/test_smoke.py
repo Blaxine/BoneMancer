@@ -568,7 +568,8 @@ def wrong_set_terms():
 check("UI says Bone Set, never collection/group", lambda: (wrong_set_terms() == [], wrong_set_terms()))
 
 
-EXPECTED_PROPS = sorted(["bonemancer_rig", "bonemancer_settings", "bonemancer_shape_keys", "bonemancer_selected_bone", "bonemancer_sets"])
+EXPECTED_PROPS = sorted(["bonemancer_rig", "bonemancer_settings", "bonemancer_shape_keys", "bonemancer_selected_bone",
+                         "bonemancer_rig_check", "bonemancer_sets"])
 check("registered properties match the allow-list", lambda: (registered_props() == EXPECTED_PROPS, registered_props()))
 
 reset()
