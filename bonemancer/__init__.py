@@ -543,6 +543,7 @@ def update_bone_list(scene):
         for old_name, new_name in zip(old, names):
             if old_name != new_name and old_name not in new_set and new_name not in old_set:
                 rename_set_entries(arm_obj, old_name, new_name)
+                rename_ignore_entries(arm_obj, old_name, new_name)
 
     settings.bone_selection.clear()
     for name in names:
@@ -1022,6 +1023,7 @@ class BONEMANCER_OT_rename_bone(bpy.types.Operator):
 
         # 3) Update group entries, driver variables on this rig, and the picker
         rename_set_entries(arm_obj, self.bone_name, new_name)
+        rename_ignore_entries(arm_obj, self.bone_name, new_name)
         update_driver_variable_paths(arm_obj, self.bone_name, new_name)
         update_bone_list(context.scene)
         arm_obj.update_tag()
@@ -1864,10 +1866,22 @@ class BONEMANCER_PG_Issue(PropertyGroup):
     object_name: StringProperty(name="Object")
 
 
+class BONEMANCER_PG_IgnoredIssue(PropertyGroup):
+    # Matches an issue when all three fields are equal
+    check: StringProperty(name="Check", override={'LIBRARY_OVERRIDABLE'})
+    bone: StringProperty(name="Bone", override={'LIBRARY_OVERRIDABLE'})
+    detail: StringProperty(name="Detail", override={'LIBRARY_OVERRIDABLE'})
+
+
 class BONEMANCER_PG_RigCheck(PropertyGroup):
     issues: CollectionProperty(type=BONEMANCER_PG_Issue)
     issues_index: IntProperty(default=0)
     has_run: BoolProperty(default=False)
+    show_ignored: BoolProperty(
+        name="Show Ignored",
+        description="Also list the issues ignored on this rig",
+        default=False,
+    )
     # Python expression drivers that couldn't be checked (scripts not trusted)
     python_drivers: IntProperty(default=0)
 
@@ -1907,8 +1921,34 @@ def run_rig_check(context, rig):
     return len(results.issues)
 
 
+def ignore_index(rig, issue):
+    """Index of the rig's ignore entry matching issue, or -1."""
+    if rig is None:
+        return -1
+    for i, entry in enumerate(rig.bonemancer_ignored_issues):
+        if entry.check == issue.check and entry.bone == issue.bone and entry.detail == issue.detail:
+            return i
+    return -1
+
+
+def is_ignored(rig, issue):
+    return ignore_index(rig, issue) >= 0
+
+
 def visible_issues(scene):
-    return list(scene.bonemancer_rig_check.issues)
+    """The issues that aren't ignored on the picked rig."""
+    rig = get_rig(scene)
+    return [issue for issue in scene.bonemancer_rig_check.issues if not is_ignored(rig, issue)]
+
+
+def rename_ignore_entries(arm_obj, old_name, new_name):
+    """Keep the rig's ignores matching a renamed bone (its name and its data paths)."""
+    old_path, new_path = f"bones{path_key(old_name)}", f"bones{path_key(new_name)}"
+    for entry in arm_obj.bonemancer_ignored_issues:
+        if entry.bone == old_name:
+            entry.bone = new_name
+        if old_path in entry.detail:
+            entry.detail = entry.detail.replace(old_path, new_path)
 
 
 def get_issue(scene, index):
@@ -1975,6 +2015,51 @@ class BONEMANCER_OT_select_issue(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class BONEMANCER_OT_ignore_issue(bpy.types.Operator):
+    bl_idname = "bonemancer.ignore_issue"
+    bl_label = "Ignore"
+    bl_description = "Stop listing this issue for this rig. Saved with the rig"
+    bl_options = {'REGISTER', 'UNDO'}
+    index: IntProperty()
+
+    def execute(self, context):
+        rig = get_rig(context.scene)
+        issue = get_issue(context.scene, self.index)
+        if not rig or not issue:
+            return {'CANCELLED'}
+        if not rig_is_editable(rig):
+            self.report({'ERROR'}, "Rig is linked from a library; make a library override to ignore issues")
+            return {'CANCELLED'}
+        if not is_ignored(rig, issue):
+            entry = rig.bonemancer_ignored_issues.add()
+            entry.check = issue.check
+            entry.bone = issue.bone
+            entry.detail = issue.detail
+        tag_addon_panels(context)
+        return {'FINISHED'}
+
+
+class BONEMANCER_OT_unignore_issue(bpy.types.Operator):
+    bl_idname = "bonemancer.unignore_issue"
+    bl_label = "Stop Ignoring"
+    bl_description = "List this issue again"
+    bl_options = {'REGISTER', 'UNDO'}
+    index: IntProperty()
+
+    def execute(self, context):
+        rig = get_rig(context.scene)
+        issue = get_issue(context.scene, self.index)
+        found = ignore_index(rig, issue) if issue else -1
+        if found < 0:
+            return {'CANCELLED'}
+        if not rig_is_editable(rig):
+            self.report({'ERROR'}, "Rig is linked from a library; make a library override to change ignored issues")
+            return {'CANCELLED'}
+        rig.bonemancer_ignored_issues.remove(found)
+        tag_addon_panels(context)
+        return {'FINISHED'}
+
+
 class BONEMANCER_OT_explain_issue(bpy.types.Operator):
     bl_idname = "bonemancer.explain_issue"
     bl_label = "Explain"
@@ -2004,13 +2089,36 @@ class BONEMANCER_OT_explain_issue(bpy.types.Operator):
 
 class BONEMANCER_UL_rig_issues(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        rig = get_rig(context.scene)
+        ignored = is_ignored(rig, item)
         row = layout.row(align=True)
         check_icon = RIG_CHECKS.get(item.check, ("", 'ERROR', ()))[1]
-        row.label(text=item.message, icon=check_icon)
+        label = row.row(align=True)
+        label.active = not ignored
+        label.label(text=item.message, icon=check_icon)
         op = row.operator("bonemancer.select_issue", text="", icon='RESTRICT_SELECT_OFF')
         op.index = index
         op = row.operator("bonemancer.explain_issue", text="", icon='INFO')
         op.index = index
+        toggle = row.row(align=True)
+        toggle.enabled = rig_is_editable(rig)
+        if ignored:
+            op = toggle.operator("bonemancer.unignore_issue", text="", icon='HIDE_ON', depress=True)
+        else:
+            op = toggle.operator("bonemancer.ignore_issue", text="", icon='HIDE_OFF')
+        op.index = index
+
+    def filter_items(self, context, data, propname):
+        issues = getattr(data, propname)
+        if self.filter_name:
+            flags = bpy.types.UI_UL_list.filter_items_by_name(
+                self.filter_name, self.bitflag_filter_item, issues, "message")
+        else:
+            flags = [self.bitflag_filter_item] * len(issues)
+        if not data.show_ignored:
+            rig = get_rig(context.scene)
+            flags = [0 if is_ignored(rig, issue) else flag for flag, issue in zip(flags, issues)]
+        return flags, []
 
 
 class BONEMANCER_PT_rig_check(bpy.types.Panel):
@@ -2046,15 +2154,19 @@ class BONEMANCER_PT_rig_check(bpy.types.Panel):
                 icon='SCRIPT')
 
         issues = visible_issues(scene)
-        if not issues:
+        ignored = len(results.issues) - len(issues)
+        if issues:
+            col = layout.column(align=True)
+            for check_id, (heading, icon, _lines) in RIG_CHECKS.items():
+                count = sum(1 for issue in issues if issue.check == check_id)
+                if count:
+                    col.label(text=f"{heading}: {count}", icon=icon)
+        else:
             layout.label(text="No issues found", icon='CHECKMARK')
+        if ignored:
+            layout.prop(results, "show_ignored", text=f"Show Ignored ({ignored})")
+        if not issues and not (ignored and results.show_ignored):
             return
-
-        col = layout.column(align=True)
-        for check_id, (heading, icon, _lines) in RIG_CHECKS.items():
-            count = sum(1 for issue in issues if issue.check == check_id)
-            if count:
-                col.label(text=f"{heading}: {count}", icon=icon)
         layout.template_list(
             "BONEMANCER_UL_rig_issues", "",
             results, "issues",
@@ -2074,6 +2186,7 @@ classes = [
     BONEMANCER_PG_ShapeKeyScanner,
     BONEMANCER_PG_ImportItem,
     BONEMANCER_PG_Issue,
+    BONEMANCER_PG_IgnoredIssue,
     BONEMANCER_PG_RigCheck,
 
     # Operators
@@ -2095,6 +2208,8 @@ classes = [
     BONEMANCER_OT_show_constraint_error,
     BONEMANCER_OT_check_rig,
     BONEMANCER_OT_select_issue,
+    BONEMANCER_OT_ignore_issue,
+    BONEMANCER_OT_unignore_issue,
     BONEMANCER_OT_explain_issue,
     # UILists
     BONEMANCER_UL_constraints,
@@ -2304,7 +2419,7 @@ def _deferred_init():
 
 SCENE_PROPS = ["bonemancer_rig", "bonemancer_settings", "bonemancer_shape_keys", "bonemancer_selected_bone",
                "bonemancer_rig_check"]
-OBJECT_PROPS = ["bonemancer_sets"]
+OBJECT_PROPS = ["bonemancer_sets", "bonemancer_ignored_issues"]
 
 
 def register():
@@ -2337,6 +2452,11 @@ def register():
     # renames and across scenes.
     bpy.types.Object.bonemancer_sets = CollectionProperty(
         type=BONEMANCER_PG_BoneSet,
+        override={'LIBRARY_OVERRIDABLE', 'USE_INSERTION'}
+    )
+    # Rig Check issues ignored on this rig; they travel with it like its sets
+    bpy.types.Object.bonemancer_ignored_issues = CollectionProperty(
+        type=BONEMANCER_PG_IgnoredIssue,
         override={'LIBRARY_OVERRIDABLE', 'USE_INSERTION'}
     )
 

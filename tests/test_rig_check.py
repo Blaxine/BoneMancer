@@ -7,7 +7,7 @@ import types
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy
-from helpers import check, finish, load_addon, make_arm, clear_data, FakePanel, MockLayout
+from helpers import check, finish, load_addon, make_arm, clear_data, tmp_dir, FakePanel, MockLayout
 
 mod = load_addon()
 check("register()", mod.register)
@@ -563,6 +563,123 @@ def icons_exist():
                                                                   'RESTRICT_SELECT_OFF', 'ERROR'}
     return (used <= valid, sorted(used - valid))
 check("every Rig Check icon exists in this Blender", icons_exist)
+
+
+# --- Ignore ---------------------------------------------------------------
+
+def index_of(check_id, bone=None):
+    return next(i for i, it in enumerate(sc.bonemancer_rig_check.issues)
+                if it.check == check_id and (bone is None or it.bone == bone))
+
+
+def listed_rows():
+    """Messages the issue list shows, honouring Show Ignored."""
+    ul = types.SimpleNamespace(filter_name="", bitflag_filter_item=1 << 30)
+    results = sc.bonemancer_rig_check
+    flags, _order = mod.BONEMANCER_UL_rig_issues.filter_items(ul, bpy.context, results, "issues")
+    return [it.message for it, flag in zip(results.issues, flags) if flag]
+
+
+def two_broken():
+    """spine: two broken constraints; arm.L: unpaired."""
+    rig = fresh(("root", "spine", "arm.L"))
+    pb = rig.pose.bones["spine"]
+    pb.constraints.new('COPY_ROTATION')
+    pb.constraints.new('COPY_LOCATION')
+    run()
+    return rig
+
+
+def ignore_hides():
+    rig = two_broken()
+    before = len(mod.visible_issues(sc))
+    r = bpy.ops.bonemancer.ignore_issue(index=index_of("unpaired"))
+    got = (r, before, len(mod.visible_issues(sc)), [(e.check, e.bone, e.detail) for e in rig.bonemancer_ignored_issues],
+           "arm.L: no 'arm.R' on the other side" in listed_rows())
+    return (got == ({'FINISHED'}, 3, 2, [("unpaired", "arm.L", "")], False), got)
+check("Ignore hides the issue and drops it from the count", ignore_hides)
+
+
+def show_ignored():
+    two_broken()
+    bpy.ops.bonemancer.ignore_issue(index=index_of("unpaired"))
+    sc.bonemancer_rig_check.show_ignored = True
+    try:
+        shown = "arm.L: no 'arm.R' on the other side" in listed_rows()
+        count = len(mod.visible_issues(sc))
+        mod.BONEMANCER_PT_rig_check.draw(FakePanel(), bpy.context)
+        for i, item in enumerate(sc.bonemancer_rig_check.issues):
+            mod.BONEMANCER_UL_rig_issues.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
+    finally:
+        sc.bonemancer_rig_check.show_ignored = False
+    return ((shown, count) == (True, 2), (shown, count))
+check("Show Ignored lists ignored issues without counting them", show_ignored)
+
+
+def unignore():
+    rig = two_broken()
+    i = index_of("unpaired")
+    bpy.ops.bonemancer.ignore_issue(index=i)
+    r = bpy.ops.bonemancer.unignore_issue(index=i)
+    got = (r, len(rig.bonemancer_ignored_issues), len(mod.visible_issues(sc)))
+    return (got == ({'FINISHED'}, 0, 3), got)
+check("Stop Ignoring lists the issue again", unignore)
+
+
+def ignore_is_specific():
+    two_broken()
+    bpy.ops.bonemancer.ignore_issue(index=index_of("constraint"))   # Copy Rotation only
+    run()
+    got = [(c, b, d) for c, b, d in [(i.check, i.bone, i.detail) for i in mod.visible_issues(sc)] if c == "constraint"]
+    return (got == [("constraint", "spine", "Copy Location")], got)
+check("ignoring one constraint doesn't hide another on the same bone", ignore_is_specific)
+
+
+def ignore_twice():
+    rig = two_broken()
+    bpy.ops.bonemancer.ignore_issue(index=index_of("unpaired"))
+    bpy.ops.bonemancer.ignore_issue(index=index_of("unpaired"))
+    return (len(rig.bonemancer_ignored_issues) == 1, len(rig.bonemancer_ignored_issues))
+check("ignoring the same issue twice stores it once", ignore_twice)
+
+
+def ignore_survives_reload():
+    global sc
+    two_broken()
+    bpy.ops.bonemancer.ignore_issue(index=index_of("unpaired"))
+    path = os.path.join(tmp_dir(), "ignored.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=path)
+    bpy.ops.wm.open_mainfile(filepath=path)
+    sc = bpy.context.scene
+    saved = len(mod.visible_issues(sc))
+    run()
+    got = (saved, [(i.check, i.bone) for i in mod.visible_issues(sc)])
+    return (got == (2, [("constraint", "spine"), ("constraint", "spine")]), got)
+check("ignores and results survive save and reopen", ignore_survives_reload)
+
+
+def ignore_follows_rename_operator():
+    rig = two_broken()
+    bpy.ops.bonemancer.ignore_issue(index=index_of("unpaired"))
+    bpy.ops.bonemancer.rename_bone(bone_name="arm.L", mode='EXACT', new_name="hand.L")
+    run()
+    got = ([e.bone for e in rig.bonemancer_ignored_issues], [i.bone for i in mod.visible_issues(sc) if i.check == "unpaired"])
+    return (got == (["hand.L"], []), got)
+check("ignores follow a bone renamed with Rename", ignore_follows_rename_operator)
+
+
+def ignore_follows_outside_rename():
+    rig = fresh(("root", "spine"))
+    add_driver(rig, 'pose.bones["spine"].location', '["missing"]', 0, target=rig)
+    run()
+    mod.update_bone_list(sc)                   # the Bone Picker knows the current names
+    bpy.ops.bonemancer.ignore_issue(index=index_of("driver"))
+    rig.data.bones["spine"].name = "chest"     # F2 / Outliner rename
+    mod.on_depsgraph_update(sc, bpy.context.evaluated_depsgraph_get())
+    run()
+    got = ([(e.bone, e.detail) for e in rig.bonemancer_ignored_issues], [i.check for i in mod.visible_issues(sc)])
+    return (got == ([("chest", 'OBJECT:Rig:pose.bones["chest"].location[0]')], []), got)
+check("ignores follow an outside rename, including driver paths", ignore_follows_outside_rename)
 
 
 check("unregister()", mod.unregister)

@@ -316,12 +316,12 @@ bone rename.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S019 | P | Ignore storage | `Object.bonemancer_ignored_issues` per *Architectural decisions*; register/unregister; add to `OBJECT_PROPS`. | S002 | `bonemancer/__init__.py` |
-|  | S020 | S | Ignore / Un-ignore operators | `UNDO` operators adding / removing the matching entry on the picked rig; refused on linked rigs. | S019 | `bonemancer/__init__.py` |
-|  | S021 | S | Rename following | Rewrite ignore entries next to each `rename_set_entries` call. | S019 | `bonemancer/__init__.py` |
-|  | S022 | U | Ignore in the panel | Ignore button per row, Show ignored toggle, header count excludes ignored. | S020 | `bonemancer/__init__.py` |
-|  | S023 | T | Extend rig check suite: ignore | Ignore → hidden and not counted; Show ignored → listed; Un-ignore → back; save/reopen keeps it; Rename operator and an outside rename (picked rig) keep it matched; ignore of one constraint doesn't hide another on the same bone. | S022, S021 | `tests/test_rig_check.py` |
-|  | S024 | T | Extend smoke: allow-list | Add `bonemancer_ignored_issues` to `EXPECTED_PROPS`. | S019 | `tests/test_smoke.py` |
+| ✅ | S019 | P | Ignore storage | `Object.bonemancer_ignored_issues` per *Architectural decisions*; register/unregister; add to `OBJECT_PROPS`. | S002 | `bonemancer/__init__.py` |
+| ✅ | S020 | S | Ignore / Un-ignore operators | `UNDO` operators adding / removing the matching entry on the picked rig; refused on linked rigs. | S019 | `bonemancer/__init__.py` |
+| ✅ | S021 | S | Rename following | Rewrite ignore entries next to each `rename_set_entries` call. | S019 | `bonemancer/__init__.py` |
+| ✅ | S022 | U | Ignore in the panel | Ignore button per row, Show ignored toggle, header count excludes ignored. | S020 | `bonemancer/__init__.py` |
+| ✅ | S023 | T | Extend rig check suite: ignore | Ignore → hidden and not counted; Show ignored → listed; Un-ignore → back; save/reopen keeps it; Rename operator and an outside rename (picked rig) keep it matched; ignore of one constraint doesn't hide another on the same bone. | S022, S021 | `tests/test_rig_check.py` |
+| ✅ | S024 | T | Extend smoke: allow-list | Add `bonemancer_ignored_issues` to `EXPECTED_PROPS`. | S019 | `tests/test_smoke.py` |
 
 ### Slice 7 — Linked and overridden rigs
 
