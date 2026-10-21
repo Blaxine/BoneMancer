@@ -1428,8 +1428,12 @@ class BONEMANCER_PT_rig(bpy.types.Panel):
             layout.operator("object.armature_add", text="Add Armature", icon='ADD')
             return
         layout.prop(scene, "bonemancer_rig", text="Armature")
-        if not get_rig(scene):
+        rig = get_rig(scene)
+        if not rig:
             hint(layout, context, "Pick the armature you want to work on. Clicking one in the viewport picks it too.")
+            return
+        # Object Properties > Viewport Display > In Front: draw the rig over its meshes
+        layout.prop(rig, "show_in_front", text="In Front")
 
 
 class BONEMANCER_PT_bones(bpy.types.Panel):

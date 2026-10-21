@@ -781,6 +781,17 @@ def ui8():
 check("UI8 Rig panel guides you until a rig is picked, then stays quiet", ui8)
 
 
+def ui8b():
+    reset(); arm = make_arm("Rig"); pick(arm, from_viewport=False)
+    props = [(d.args[0].name, d.args[1], d.text) for d in record(mod.BONEMANCER_PT_rig.draw, bpy.context).drawn("prop")
+             if d.args[1] == "show_in_front"]
+    pick(None, from_viewport=False)
+    unpicked = [d for d in record(mod.BONEMANCER_PT_rig.draw, bpy.context).drawn("prop") if d.args[1] == "show_in_front"]
+    got = (props, unpicked)
+    return (got == ([("Rig", "show_in_front", "In Front")], []), got)
+check("UI8b Rig panel has the picked rig's In Front checkbox", ui8b)
+
+
 def settings_props(drawn):
     """(property, owner type, bone name) for the Deform and IK controls drawn."""
     wanted = ("use_deform", "ik_stretch", "lock_ik_x", "lock_ik_y", "lock_ik_z")

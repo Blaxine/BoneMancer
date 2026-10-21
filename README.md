@@ -16,7 +16,8 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
 - **Rig.** Choose the armature to work on, or just click one in the viewport:
   the panel follows the active armature. Picking from the list puts the rig in
   Pose Mode (only from Object, Pose or armature Edit Mode, so a sculpt or paint
-  session isn't interrupted).
+  session isn't interrupted). **In Front** draws the rig over its meshes (the
+  same option as Object Properties > Viewport Display > In Front).
 - **Bones.** Every bone of the rig. Click a bone to select it in the viewport;
   bones selected in the viewport are highlighted, and **Add Selected to a Bone
   Set** puts all of them into a new or existing set in one go. **Rename** and

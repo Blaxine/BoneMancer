@@ -35,6 +35,9 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
 - [ ] Add > Armature > Human (Rigify) (or any rig); pick it in **Armature**:
       it becomes active and Pose Mode is entered.
 - [ ] Clicking another armature in the viewport switches the picker to it.
+- [ ] **In Front** under Armature matches Object Properties > Viewport Display >
+      In Front for the picked rig; ticking it draws the bones over the mesh,
+      and it follows when another rig is picked. Ctrl+Z undoes it.
 - [ ] In Sculpt Mode on a mesh, picking a rig from the list does **not** leave
       Sculpt Mode.
 - [ ] The Bone Picker lists every bone; the list scrolls and filters.
