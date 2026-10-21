@@ -43,7 +43,7 @@ def state():
                [(b.bone_name, b.show_custom_props, b.show_constraints) for b in g.bones])
               for g in rig.bonemancer_sets]
     leftovers = [f"{id_data.name}:{k}" for id_data in (sc, rig, bpy.data.objects["Prop"])
-                 for store in mod.legacy_stores(id_data) for k in store.keys() if k.startswith("rmv2_")]
+                 for store in migration.legacy_stores(id_data) for k in store.keys() if k.startswith("rmv2_")]
     return {
         "groups": groups,
         "legacy_left": leftovers,
@@ -60,6 +60,7 @@ EXPECTED = {
 }
 
 mod = load_addon()
+from bonemancer.core import migration
 check("register()", mod.register)
 
 me = bpy.app.binary_path

@@ -18,6 +18,10 @@ def foreign_handler(scene, depsgraph=None):
 bpy.app.handlers.depsgraph_update_post.append(foreign_handler)
 
 mod = load_addon()
+from bonemancer import handlers
+from bonemancer.core import compat, migration, rig_check, selection, shape_keys, utils
+from bonemancer.operators import bone_sets
+from bonemancer.ui import common, draw, lists, panels
 check("register()", mod.register)
 sc = bpy.context.scene
 
@@ -30,11 +34,10 @@ def reset():
 def pick(obj, from_viewport=True):
     if from_viewport and obj and bpy.context.view_layer.objects.get(obj.name) == obj:
         bpy.context.view_layer.objects.active = obj   # what clicking it in the viewport does
-    mod._armature_change_from_viewport = from_viewport
-    try:
+    if from_viewport:
+        selection.follow_viewport_rig(sc, obj)
+    else:
         sc.bonemancer_rig = obj
-    finally:
-        mod._armature_change_from_viewport = False
 
 
 def add(bone, group="G"):
@@ -50,7 +53,7 @@ def entries(arm, i=0):
 
 
 def handler_run():
-    mod.on_depsgraph_update(sc, bpy.context.evaluated_depsgraph_get())
+    handlers.on_depsgraph_update(sc, bpy.context.evaluated_depsgraph_get())
 
 
 def add_mesh(arm=None, keys=("Basis", "Smile")):
@@ -64,7 +67,7 @@ def add_mesh(arm=None, keys=("Basis", "Smile")):
 
 
 def key_count(m, path=None):
-    fcurves = mod.get_anim_fcurves(m.data.shape_keys.animation_data)
+    fcurves = compat.get_anim_fcurves(m.data.shape_keys.animation_data)
     return sum(len(fc.keyframe_points) for fc in fcurves if path is None or fc.data_path == path)
 
 
@@ -114,7 +117,7 @@ def smoke():
 
 
 def draw_all():
-    arm = mod.get_rig(sc)
+    arm = utils.get_rig(sc)
     add("root", "Core")
     arm.bonemancer_sets[-1].bones.add().bone_name = "ghost"   # missing-bone row
     arm.pose.bones["root"]['we"ird'] = 1.0
@@ -124,13 +127,13 @@ def draw_all():
             b.show_details = True
             b.show_custom_props = True
             b.show_constraints = True
-    for panel in (mod.BONEMANCER_PT_rig, mod.BONEMANCER_PT_bones, mod.BONEMANCER_PT_bone_sets, mod.BONEMANCER_PT_shape_keys):
+    for panel in (panels.BONEMANCER_PT_rig, panels.BONEMANCER_PT_bones, panels.BONEMANCER_PT_bone_sets, panels.BONEMANCER_PT_shape_keys):
         panel.draw(FakePanel(), bpy.context)
-    mod.BONEMANCER_PT_shape_keys.draw_header_preset(FakePanel(), bpy.context)
+    panels.BONEMANCER_PT_shape_keys.draw_header_preset(FakePanel(), bpy.context)
     grp = sc.bonemancer_shape_keys.object_groups[0]
-    mod.BONEMANCER_UL_shape_key_meshes.draw_item(None, bpy.context, MockLayout(), None, grp, 0, None, "", 0)
+    lists.BONEMANCER_UL_shape_key_meshes.draw_item(None, bpy.context, MockLayout(), None, grp, 0, None, "", 0)
     for i, it in enumerate(grp.shape_keys):
-        mod.BONEMANCER_UL_shape_keys.draw_item(None, bpy.context, MockLayout(), grp, it, 0, grp, "shape_keys_index", i)
+        lists.BONEMANCER_UL_shape_keys.draw_item(None, bpy.context, MockLayout(), grp, it, 0, grp, "shape_keys_index", i)
 
 
 check("smoke suite", smoke)
@@ -182,7 +185,7 @@ def p5():
     sc.tool_settings.use_keyframe_insert_auto = True
     pick(arm, from_viewport=False); bpy.ops.bonemancer.scan_shape_keys()
     ad = m.data.shape_keys.animation_data
-    keyed = [fc.data_path for fc in mod.get_anim_fcurves(ad)] if ad else []
+    keyed = [fc.data_path for fc in compat.get_anim_fcurves(ad)] if ad else []
     return (keyed == [], keyed)
 check("P5 picking/scanning with auto-key inserts no keys", p5)
 
@@ -323,7 +326,7 @@ check("P14 rename in Edit Mode sticks", p14)
 
 def p17():
     reset(); arm = make_arm("Rig"); pb = arm.pose.bones["a"]; pb['ik "soft"'] = 1.0
-    return (pb.path_resolve(mod.path_key('ik "soft"')) == 1.0, None)
+    return (pb.path_resolve(utils.path_key('ik "soft"')) == 1.0, None)
 check("P17 custom prop with quote resolves via escaped path", p17)
 
 
@@ -346,8 +349,8 @@ check("P19 keyframe toggle on shape key with quote", p19)
 def p21():
     reset(); arm = make_arm("Rig"); pick(arm); add("a"); add("b")
     bpy.ops.bonemancer.toggle_bone(bone_name="a")
-    bpy.ops.bonemancer.toggle_set(set_name="G"); s1 = {n: mod.is_hidden(arm.pose.bones[n]) for n in "ab"}
-    bpy.ops.bonemancer.toggle_set(set_name="G"); s2 = {n: mod.is_hidden(arm.pose.bones[n]) for n in "ab"}
+    bpy.ops.bonemancer.toggle_set(set_name="G"); s1 = {n: compat.is_hidden(arm.pose.bones[n]) for n in "ab"}
+    bpy.ops.bonemancer.toggle_set(set_name="G"); s2 = {n: compat.is_hidden(arm.pose.bones[n]) for n in "ab"}
     return (s1 == {"a": True, "b": True} and s2 == {"a": False, "b": False}, (s1, s2))
 check("P21 group toggle unifies visibility", p21)
 
@@ -357,7 +360,7 @@ def p22():
             "bonemancer.toggle_shape_keyframe", "bonemancer.rename_bone", "bonemancer.add_custom_prop", "bonemancer.add_bone_to_set"}
     missing = sorted(c.bl_idname for c in mod.classes
                      if getattr(c, "bl_idname", "") in must and 'UNDO' not in getattr(c, "bl_options", set()))
-    return (missing == [] and hasattr(mod.BONEMANCER_OT_remove_set, "invoke"), missing)
+    return (missing == [] and hasattr(bone_sets.BONEMANCER_OT_remove_set, "invoke"), missing)
 check("P22 data-changing operators are undoable; remove group confirms", p22)
 
 
@@ -372,9 +375,9 @@ check("P23 existing custom prop is not overwritten", p23)
 def p24():
     reset(); arm = make_arm("Rig"); pick(arm); add("a")
     bpy.context.view_layer.objects.active = arm; bpy.ops.object.mode_set(mode='POSE')
-    mod.set_bone_selected(arm.pose.bones["a"], True)
+    compat.set_bone_selected(arm.pose.bones["a"], True)
     bpy.ops.object.mode_set(mode='OBJECT')
-    return (mod.bone_is_selected(arm.pose.bones["a"]), None)
+    return (compat.bone_is_selected(arm.pose.bones["a"]), None)
 check("P24 selection highlight reads live selection", p24)
 
 
@@ -392,7 +395,7 @@ def p26():
     kb.value = 0.3; kb.keyframe_insert("value", frame=10.5)
     sc.frame_set(10)
     bpy.ops.bonemancer.toggle_shape_keyframe(object_name=m.name, shape_key_name="Smile")
-    frames = sorted(round(kp.co.x, 2) for fc in mod.get_anim_fcurves(m.data.shape_keys.animation_data)
+    frames = sorted(round(kp.co.x, 2) for fc in compat.get_anim_fcurves(m.data.shape_keys.animation_data)
                     for kp in fc.keyframe_points)
     return (frames == [10.0, 10.5], frames)
 check("P26 subframe key isn't treated as a key on the whole frame", p26)
@@ -402,11 +405,11 @@ check("P26 subframe key isn't treated as a key on the whole frame", p26)
 
 def leftover_handlers():
     hs = list(bpy.app.handlers.depsgraph_update_post) + list(bpy.app.handlers.load_post)
-    return [h.__name__ for h in hs if h.__module__ == mod.__name__]
+    return [h.__name__ for h in hs if h.__module__.split(".")[0] == mod.__name__]
 
 
 def pose_selected(arm):
-    return [pb.name for pb in arm.pose.bones if mod.bone_is_selected(pb)]
+    return [pb.name for pb in arm.pose.bones if compat.bone_is_selected(pb)]
 
 
 def edit_selected(arm):
@@ -419,7 +422,7 @@ def picker():
 
 def p27():
     reset(); arm = make_arm("Rig", ("a", "b", "c")); pick(arm, from_viewport=False)
-    mod.set_bone_selected(arm.pose.bones["a"], True)
+    compat.set_bone_selected(arm.pose.bones["a"], True)
     picker().bone_selection_index = 1
     got = (bpy.context.mode, pose_selected(arm), arm.data.bones.active.name)
     return (got == ('POSE', ["b"], "b"), got)
@@ -457,7 +460,7 @@ check("P27d Bone Picker click doesn't leave Sculpt Mode", p27d)
 def p28():
     reset(); arm = make_arm("Rig", ("a", "b", "c")); pick(arm, from_viewport=False)
     for name in ("b", "c"):
-        mod.set_bone_selected(arm.pose.bones[name], True)
+        compat.set_bone_selected(arm.pose.bones[name], True)
     arm.data.bones.active = arm.data.bones["c"]
     handler_run()
     got = (picker().bone_selection_index, pose_selected(arm))
@@ -498,7 +501,7 @@ def select_in_pose(arm, names):
     if arm.mode != 'POSE':
         bpy.ops.object.mode_set(mode='POSE')
     for pb in arm.pose.bones:
-        mod.set_bone_selected(pb, pb.name in names)
+        compat.set_bone_selected(pb, pb.name in names)
 
 
 def p28d():
@@ -506,14 +509,14 @@ def p28d():
     select_in_pose(arm, ("b", "d"))
     arm.data.bones.active = arm.data.bones["d"]                # the active bone won't change below
     handler_run()
-    first = mod._picker_selection
-    mod.set_bone_selected(arm.pose.bones["b"], False)          # ctrl-click off a non-active bone
-    redraw = mod.sync_selected_bone(sc, bpy.context.view_layer)
+    first = selection._picker_selection
+    compat.set_bone_selected(arm.pose.bones["b"], False)          # ctrl-click off a non-active bone
+    redraw = selection.sync_selected_bone(sc, bpy.context.view_layer)
     for i, item in enumerate(picker().bone_selection):
-        mod.BONEMANCER_UL_bone_picker.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
-    mod.BONEMANCER_PT_bones.draw(FakePanel(), bpy.context)
-    got = (first, redraw, mod._picker_selection,
-           [it.name for it in picker().bone_selection if mod.bone_selected_in_viewport(arm, it.name)])
+        lists.BONEMANCER_UL_bone_picker.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
+    panels.BONEMANCER_PT_bones.draw(FakePanel(), bpy.context)
+    got = (first, redraw, selection._picker_selection,
+           [it.name for it in picker().bone_selection if selection.bone_selected_in_viewport(arm, it.name)])
     bpy.ops.object.mode_set(mode='OBJECT')
     return (got == (("b", "d"), True, ("d",), ["d"]), got)
 check("P28d every selected bone is highlighted, and any selection change redraws", p28d)
@@ -522,8 +525,8 @@ check("P28d every selected bone is highlighted, and any selection change redraws
 def p28e():
     reset(); arm = make_arm("Rig", ("a", "b", "c", "d")); pick(arm, from_viewport=False)
     select_in_pose(arm, ("d", "b"))
-    mod.set_hidden(arm.pose.bones["c"], True)
-    mod.set_bone_selected(arm.pose.bones["c"], True)            # hidden bones don't count
+    compat.set_hidden(arm.pose.bones["c"], True)
+    compat.set_bone_selected(arm.pose.bones["c"], True)            # hidden bones don't count
     r1 = bpy.ops.bonemancer.add_bone_to_set(use_selected=True, create_new=True, new_set_name="Picked")
     select_in_pose(arm, ("a", "b"))
     r2 = bpy.ops.bonemancer.add_bone_to_set(use_selected=True, set_enum="Picked")
@@ -590,7 +593,7 @@ def p30():
     settings = sc.bonemancer_settings
     settings["last_armature"] = arm      # what 1.0 development builds saved
     before = arm.users
-    mod.migrate_legacy_data()
+    migration.migrate_legacy_data()
     got = (hasattr(settings, "last_armature"), settings.get("last_armature"), before - arm.users)
     return (got == (False, None, 1), got)
 check("P30 last_armature is gone, and stale values from dev builds are removed on load", p30)
@@ -604,13 +607,13 @@ def p31():
     reset(); arm = make_arm("Rig"); m = add_mesh(arm); pick(arm)
     first = scanner()
     m.shape_key_add(name="Frown")
-    added = mod.refresh_shape_keys(sc)
+    added = shape_keys.refresh_shape_keys(sc)
     after_add = scanner()
     m.data.shape_keys.key_blocks["Smile"].name = "Grin"
-    mod.refresh_shape_keys(sc)
+    shape_keys.refresh_shape_keys(sc)
     after_rename = scanner()
     m.shape_key_remove(m.data.shape_keys.key_blocks["Frown"])
-    mod.refresh_shape_keys(sc)
+    shape_keys.refresh_shape_keys(sc)
     got = (first, added, after_add, after_rename, scanner())
     return (got == ([(m.name, ["Smile"])], True, [(m.name, ["Smile", "Frown"])], [(m.name, ["Grin", "Frown"])],
                     [(m.name, ["Grin"])]), got)
@@ -622,10 +625,10 @@ def p31b():
     other = add_mesh()                                      # not deformed yet
     before = scanner()
     other.modifiers.new("Armature", 'ARMATURE').object = arm
-    mod.refresh_shape_keys(sc)
+    shape_keys.refresh_shape_keys(sc)
     added = [name for name, _keys in scanner()]
     m.parent = None
-    mod.refresh_shape_keys(sc)
+    shape_keys.refresh_shape_keys(sc)
     got = (before, added, [name for name, _keys in scanner()])
     return (got == ([(m.name, ["Smile"])], sorted([m.name, other.name]), [other.name]), got)
 check("P31b meshes appear and disappear as they gain or lose the rig", p31b)
@@ -639,7 +642,7 @@ def p31c():
     grp = settings.object_groups[names.index(a.name)]
     grp.shape_keys_index = 1                                # "Two"
     a.shape_key_add(name="Three")
-    mod.refresh_shape_keys(sc)
+    shape_keys.refresh_shape_keys(sc)
     names = [g.object_name for g in settings.object_groups]
     grp = settings.object_groups[names.index(a.name)]
     got = (settings.object_groups[settings.object_groups_index].object_name == a.name,
@@ -652,11 +655,11 @@ def p31d():
     reset(); arm = make_arm("Rig"); m = add_mesh(arm); pick(arm)
     sc.tool_settings.use_keyframe_insert_auto = True
     m.data.shape_keys.key_blocks["Smile"].value = 0.7       # dragging a slider
-    rebuilt = mod.refresh_shape_keys(sc)
+    rebuilt = shape_keys.refresh_shape_keys(sc)
     m.shape_key_add(name="Frown")
-    mod.refresh_shape_keys(sc)                              # a rebuild with auto-key on
+    shape_keys.refresh_shape_keys(sc)                              # a rebuild with auto-key on
     ad = m.data.shape_keys.animation_data
-    keyed = [fc.data_path for fc in mod.get_anim_fcurves(ad)] if ad else []
+    keyed = [fc.data_path for fc in compat.get_anim_fcurves(ad)] if ad else []
     sc.tool_settings.use_keyframe_insert_auto = False
     return ((rebuilt, keyed) == (False, []), (rebuilt, keyed))
 check("P31d moving a slider doesn't rebuild, and rebuilding never keys", p31d)
@@ -681,12 +684,12 @@ def ui1():
     select_in_pose(arm, ("a", "c"))
     arm.data.bones.active = arm.data.bones["c"]
     handler_run()
-    drawn = record(mod.BONEMANCER_PT_bones.draw, bpy.context)
+    drawn = record(panels.BONEMANCER_PT_bones.draw, bpy.context)
     add = [d for d in drawn.drawn("operator") if d.args == ("bonemancer.add_bone_to_set",)]
     actions = [(d.args[0], d.text, d.result.attrs.get("bone_name")) for d in drawn.drawn("operator")
                if d.args[0] in ("bonemancer.rename_bone", "bonemancer.show_bone_relations")]
     select_in_pose(arm, ())
-    empty = [d for d in record(mod.BONEMANCER_PT_bones.draw, bpy.context).drawn("operator")
+    empty = [d for d in record(panels.BONEMANCER_PT_bones.draw, bpy.context).drawn("operator")
              if d.args == ("bonemancer.add_bone_to_set",)]
     bpy.ops.object.mode_set(mode='OBJECT')
     got = ([(d.text, d.enabled, d.result.attrs.get("use_selected")) for d in add],
@@ -702,7 +705,7 @@ def ui2():
     select_in_pose(arm, ("b",))
     rows = []
     for i, item in enumerate(picker().bone_selection):
-        layout = record(lambda self, ctx: mod.BONEMANCER_UL_bone_picker.draw_item(
+        layout = record(lambda self, ctx: lists.BONEMANCER_UL_bone_picker.draw_item(
             None, ctx, self.layout, None, item, 0, None, "", i), bpy.context)
         rows.append([(d.kind, d.text, d.args[:1]) for d in layout.drawn("label", "operator")])
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -717,9 +720,9 @@ def ui3():
     add("a", "Arms")
     grp = arm.bonemancer_sets["Arms"]
     grp.show_expanded = True
-    collapsed = record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context)
+    collapsed = record(panels.BONEMANCER_PT_bone_sets.draw, bpy.context)
     grp.bones[0].show_details = True
-    expanded = record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context)
+    expanded = record(panels.BONEMANCER_PT_bone_sets.draw, bpy.context)
 
     def bone_row(drawn):
         ops = [d.args[0] for d in drawn.drawn("operator")]
@@ -735,9 +738,11 @@ check("UI3 Bone Set rows show select, hide and details; details hold labelled ac
 
 def ui4():
     valid = {i.identifier for i in bpy.types.UILayout.bl_rna.functions["label"].parameters["icon"].enum_items}
-    source = open(mod.__file__, encoding="utf-8").read()
+    package = os.path.dirname(mod.__file__)
+    source = "".join(open(os.path.join(root, f), encoding="utf-8").read()
+                     for root, _dirs, files in os.walk(package) for f in files if f.endswith(".py"))
     used = set(re.findall(r"icon\s*=\s*'([A-Z0-9_]+)'", source))
-    used |= {icon for _h, icon, _l in mod.RIG_CHECKS.values()}
+    used |= {icon for _h, icon, _l in rig_check.RIG_CHECKS.values()}
     return (len(used) > 20 and used <= valid, sorted(used - valid))
 check("UI4 every icon the add-on names exists in this Blender", ui4)
 
@@ -746,14 +751,14 @@ def ui5():
     import types
     text = "Bone Sets keep the bones you use often in one place. Add bones from the Bones panel."
     ctx = types.SimpleNamespace(region=types.SimpleNamespace(width=300), preferences=bpy.context.preferences)
-    lines = mod.text_lines(ctx, text)
+    lines = common.text_lines(ctx, text)
     return (len(lines) > 1 and " ".join(lines) == text and max(map(len, lines)) <= 47, lines)
 check("UI5 hints wrap to the sidebar's width", ui5)
 
 
 def ui6():
-    panels = [c for c in mod.classes if issubclass(c, bpy.types.Panel)]
-    got = [(c.bl_label, 'DEFAULT_CLOSED' in getattr(c, "bl_options", set())) for c in panels]
+    panel_classes = [c for c in mod.classes if issubclass(c, bpy.types.Panel)]
+    got = [(c.bl_label, 'DEFAULT_CLOSED' in getattr(c, "bl_options", set())) for c in panel_classes]
     return (got == [("Rig", False), ("Bones", False), ("Bone Sets", False), ("Rig Check", True),
                     ("Shape Keys", True)], got)
 check("UI6 panels are Rig, Bones, Bone Sets, Rig Check, Shape Keys; the first three start open", ui6)
@@ -761,22 +766,22 @@ check("UI6 panels are Rig, Bones, Bone Sets, Rig Check, Shape Keys; the first th
 
 def ui7():
     reset(); arm = make_arm("Rig"); add_mesh(arm, ("Basis", "Smile", "Blink")); pick(arm)
-    drawn = record(mod.BONEMANCER_PT_shape_keys.draw, bpy.context)
-    lists = [d.args[0] for d in drawn.drawn("template_list")]
-    no_rig = (sc.__setattr__("bonemancer_rig", None), record(mod.BONEMANCER_PT_shape_keys.draw, bpy.context))[1]
-    got = (lists, no_rig.drawn("template_list"), any("Rig panel" in t for t in no_rig.texts("label")))
+    drawn = record(panels.BONEMANCER_PT_shape_keys.draw, bpy.context)
+    list_names = [d.args[0] for d in drawn.drawn("template_list")]
+    no_rig = (sc.__setattr__("bonemancer_rig", None), record(panels.BONEMANCER_PT_shape_keys.draw, bpy.context))[1]
+    got = (list_names, no_rig.drawn("template_list"), any("Rig panel" in t for t in no_rig.texts("label")))
     return (got == (["BONEMANCER_UL_shape_key_meshes", "BONEMANCER_UL_shape_keys"], [], True), got)
 check("UI7 Shape Keys shows the highlighted mesh's keys without expanding it", ui7)
 
 
 def ui8():
     reset()
-    empty = record(mod.BONEMANCER_PT_rig.draw, bpy.context)
+    empty = record(panels.BONEMANCER_PT_rig.draw, bpy.context)
     arm = make_arm("Rig")
     pick(None, from_viewport=False)
-    unpicked = record(mod.BONEMANCER_PT_rig.draw, bpy.context)
+    unpicked = record(panels.BONEMANCER_PT_rig.draw, bpy.context)
     pick(arm, from_viewport=False)
-    picked = record(mod.BONEMANCER_PT_rig.draw, bpy.context)
+    picked = record(panels.BONEMANCER_PT_rig.draw, bpy.context)
     got = ([d.args[0] for d in empty.drawn("operator")], len(unpicked.texts("label")) > 0, picked.texts("label"))
     return (got == (["object.armature_add"], True, []), got)
 check("UI8 Rig panel guides you until a rig is picked, then stays quiet", ui8)
@@ -784,10 +789,10 @@ check("UI8 Rig panel guides you until a rig is picked, then stays quiet", ui8)
 
 def ui8b():
     reset(); arm = make_arm("Rig"); pick(arm, from_viewport=False)
-    props = [(d.args[0].name, d.args[1], d.text) for d in record(mod.BONEMANCER_PT_rig.draw, bpy.context).drawn("prop")
+    props = [(d.args[0].name, d.args[1], d.text) for d in record(panels.BONEMANCER_PT_rig.draw, bpy.context).drawn("prop")
              if d.args[1] == "show_in_front"]
     pick(None, from_viewport=False)
-    unpicked = [d for d in record(mod.BONEMANCER_PT_rig.draw, bpy.context).drawn("prop") if d.args[1] == "show_in_front"]
+    unpicked = [d for d in record(panels.BONEMANCER_PT_rig.draw, bpy.context).drawn("prop") if d.args[1] == "show_in_front"]
     got = (props, unpicked)
     return (got == ([("Rig", "show_in_front", "In Front")], []), got)
 check("UI8b Rig panel has the picked rig's In Front checkbox", ui8b)
@@ -804,12 +809,12 @@ def ui9():
     select_in_pose(arm, ("b",))
     arm.data.bones.active = arm.data.bones["b"]
     handler_run()
-    bones = settings_props(record(mod.BONEMANCER_PT_bones.draw, bpy.context))
+    bones = settings_props(record(panels.BONEMANCER_PT_bones.draw, bpy.context))
     add("a", "Arms")
     arm.bonemancer_sets["Arms"].show_expanded = True
-    closed = settings_props(record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context))
+    closed = settings_props(record(panels.BONEMANCER_PT_bone_sets.draw, bpy.context))
     arm.bonemancer_sets["Arms"].bones[0].show_details = True
-    opened = settings_props(record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context))
+    opened = settings_props(record(panels.BONEMANCER_PT_bone_sets.draw, bpy.context))
     bpy.ops.object.mode_set(mode='OBJECT')
     expect = lambda name: [("use_deform", "Bone", name), ("ik_stretch", "PoseBone", name), ("lock_ik_x", "PoseBone", name),
                            ("lock_ik_y", "PoseBone", name), ("lock_ik_z", "PoseBone", name)]
@@ -822,13 +827,13 @@ def ui10():
     reset(); arm = make_arm("Rig", ("a",)); pick(arm, from_viewport=False)
     bpy.context.view_layer.objects.active = arm
     bpy.ops.object.mode_set(mode='EDIT')
-    target = mod.settings_bone(arm, "a")
+    target = draw.settings_bone(arm, "a")
     kind = type(target).__name__
     target.use_deform = False                        # what unticking the box in Edit Mode does
     bpy.ops.object.mode_set(mode='OBJECT')
     pb = arm.pose.bones["a"]
     pb.ik_stretch, pb.lock_ik_y = 0.25, True         # pose bone settings need no mode
-    got = (kind, arm.data.bones["a"].use_deform, round(pb.ik_stretch, 3), pb.lock_ik_y, type(mod.settings_bone(arm, "a")).__name__)
+    got = (kind, arm.data.bones["a"].use_deform, round(pb.ik_stretch, 3), pb.lock_ik_y, type(draw.settings_bone(arm, "a")).__name__)
     return (got == ("EditBone", False, 0.25, True, "Bone"), got)
 check("UI10 Deform edits the edit bone in Edit Mode, so unticking it survives leaving Edit Mode", ui10)
 
@@ -853,8 +858,8 @@ def ui11():
     add("a", "Arms")
     entry = arm.bonemancer_sets["Arms"].bones[0]
     arm.bonemancer_sets["Arms"].show_expanded = entry.show_details = entry.show_custom_props = True
-    buttons = prop_buttons(record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context))
-    removed = bpy.ops.wm.properties_remove(data_path=mod.pose_bone_path("a"), property_name='we"ird')
+    buttons = prop_buttons(record(panels.BONEMANCER_PT_bone_sets.draw, bpy.context))
+    removed = bpy.ops.wm.properties_remove(data_path=utils.pose_bone_path("a"), property_name='we"ird')
     got = (sorted(buttons), removed, list(pb.keys()))
     return (got == (sorted([("bonemancer.edit_custom_prop", "a", "ik_fk"), ("wm.properties_remove", "a", "ik_fk"),
                             ("bonemancer.edit_custom_prop", "a", 'we"ird'), ("wm.properties_remove", "a", 'we"ird')]),
@@ -907,7 +912,7 @@ check("UI12 Edit Property makes a script-made float safe to switch to Integer, a
 
 def settings_drawn(con):
     """(property, text) for everything draw_constraint_settings binds, in order."""
-    drawn = record(lambda self, ctx: mod.draw_constraint_settings(self.layout, con), bpy.context)
+    drawn = record(lambda self, ctx: draw.draw_constraint_settings(self.layout, con), bpy.context)
     return [(d.args[1], d.text) for d in drawn.drawn("prop", "prop_search")]
 
 
@@ -924,7 +929,7 @@ def ui13():
     armature.targets.new().target = arm
     custom = pb.constraints.new('COPY_LOCATION')
     custom.owner_space = 'CUSTOM'
-    types_ok = set(mod.CONSTRAINT_SPACES) <= {i.identifier for i in bpy.types.Constraint.bl_rna.properties["type"].enum_items}
+    types_ok = set(draw.CONSTRAINT_SPACES) <= {i.identifier for i in bpy.types.Constraint.bl_rna.properties["type"].enum_items}
     got = {c.type + ("+custom" if c == custom else ""): [p for p, _t in settings_drawn(c)]
            for c in (copy, limit, ik, child, armature, custom)}
     want = {
@@ -948,11 +953,11 @@ def ui14():
     entry = arm.bonemancer_sets["Arms"].bones[0]
     arm.bonemancer_sets["Arms"].show_expanded = entry.show_details = entry.show_constraints = True
     entry.constraint_index = 1
-    panel = record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context)
+    panel = record(panels.BONEMANCER_PT_bone_sets.draw, bpy.context)
     settings_for = [d.args[0].name for d in panel.drawn("prop") if len(d.args) > 1 and d.args[1] == "owner_space"]
     rows = []
     for i, con in enumerate(pb.constraints):
-        row = record(lambda self, ctx: mod.BONEMANCER_UL_constraints.draw_item(
+        row = record(lambda self, ctx: lists.BONEMANCER_UL_constraints.draw_item(
             types.SimpleNamespace(layout_type='DEFAULT'), ctx, self.layout, pb, con, 0, None, "", i), bpy.context)
         rows += [(d.result.attrs["bone_name"], d.result.attrs["constraint_name"])
                  for d in row.drawn("operator") if d.args[0] == "bonemancer.remove_constraint"]

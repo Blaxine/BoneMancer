@@ -53,8 +53,14 @@ def build():
         return (False, out[-500:])
     names = zipfile.ZipFile(zip_path).namelist()
     unwanted = [n for n in names if "__pycache__" in n or n.endswith((".pyc", ".zip"))]
-    return ("blender_manifest.toml" in names and "__init__.py" in names and not unwanted, names)
-check("extension build", build)
+    # Every module of the package, subfolders included
+    sources = [os.path.relpath(os.path.join(root, f), PACKAGE_DIR).replace(os.sep, "/")
+               for root, _dirs, files in os.walk(PACKAGE_DIR) if "__pycache__" not in root
+               for f in files if f.endswith(".py")]
+    missing = [s for s in sources if s not in names]
+    ok = "blender_manifest.toml" in names and "core/__init__.py" in sources and not missing and not unwanted
+    return (ok, (missing, unwanted))
+check("extension build includes every module", build)
 
 
 def user_repo():

@@ -9,16 +9,15 @@ import bpy
 from helpers import check, finish, load_addon, refused, make_arm, clear_data, FakePanel, MockLayout
 
 mod = load_addon()
+from bonemancer.core import selection
+from bonemancer.operators import bone_sets
+from bonemancer.ui import panels
 check("register()", mod.register)
 sc = bpy.context.scene
 
 
 def pick(obj):
-    mod._armature_change_from_viewport = True
-    try:
-        sc.bonemancer_rig = obj
-    finally:
-        mod._armature_change_from_viewport = False
+    selection.follow_viewport_rig(sc, obj)
 
 
 def make_rig():
@@ -57,7 +56,7 @@ def import_(**kw):
 
 def tree():
     arm = make_rig()
-    got = [(c.name, d) for c, d in mod.native_collections(arm.data)]
+    got = [(c.name, d) for c, d in bone_sets.native_collections(arm.data)]
     return (got == [("Body", 0), ("Arms", 0), ("Arm.L", 1), ("Arm.R", 1), ("Empty", 0)], got)
 check("collections listed parents first with nesting depth", tree)
 
@@ -126,7 +125,7 @@ check("disabled when the rig has no bone collections", no_collections)
 
 
 def undoable():
-    opts = mod.BONEMANCER_OT_import_bone_collections.bl_options
+    opts = bone_sets.BONEMANCER_OT_import_bone_collections.bl_options
     return ('UNDO' in opts and 'REGISTER' in opts, opts)
 check("import is undoable", undoable)
 
@@ -141,14 +140,14 @@ class FakeOperator:
     items = [FakeItem("Arms", 0, 0, False), FakeItem("Arm.L", 2, 1, True), FakeItem("Arm.R", 1, 1, True)]
 
 
-check("dialog draws", lambda: mod.BONEMANCER_OT_import_bone_collections.draw(FakeOperator(), bpy.context))
+check("dialog draws", lambda: bone_sets.BONEMANCER_OT_import_bone_collections.draw(FakeOperator(), bpy.context))
 
 
 def panel_empty_state():
     make_rig()
     fp = FakePanel()
     fp._draw_bone_buttons = lambda *a: None
-    mod.BONEMANCER_PT_bone_sets.draw(fp, bpy.context)
+    panels.BONEMANCER_PT_bone_sets.draw(fp, bpy.context)
 check("Bone Sets panel draws its empty state", panel_empty_state)
 
 check("unregister()", mod.unregister)

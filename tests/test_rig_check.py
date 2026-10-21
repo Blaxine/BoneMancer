@@ -10,6 +10,9 @@ import bpy
 from helpers import check, finish, load_addon, make_arm, clear_data, tmp_dir, FakePanel, MockLayout, record
 
 mod = load_addon()
+from bonemancer import handlers
+from bonemancer.core import compat, rig_check, selection
+from bonemancer.ui import draw, lists, panels
 check("register()", mod.register)
 sc = bpy.context.scene
 
@@ -17,11 +20,7 @@ sc = bpy.context.scene
 def pick(obj):
     if obj and bpy.context.view_layer.objects.get(obj.name) == obj:
         bpy.context.view_layer.objects.active = obj    # the handler follows the active armature
-    mod._armature_change_from_viewport = True
-    try:
-        sc.bonemancer_rig = obj
-    finally:
-        mod._armature_change_from_viewport = False
+    selection.follow_viewport_rig(sc, obj)
 
 
 def fresh(bones=("root", "spine")):
@@ -62,8 +61,8 @@ def snapshot(rig):
 def no_rig():
     pick(None)
     clear_data()
-    mod.BONEMANCER_PT_rig_check.draw(FakePanel(), bpy.context)
-    mod.BONEMANCER_PT_rig_check.draw_header_preset(FakePanel(), bpy.context)
+    panels.BONEMANCER_PT_rig_check.draw(FakePanel(), bpy.context)
+    panels.BONEMANCER_PT_rig_check.draw_header_preset(FakePanel(), bpy.context)
     return (not bpy.ops.bonemancer.check_rig.poll(), None)
 check("no picked rig: Check Rig is disabled and the panel draws", no_rig)
 
@@ -129,7 +128,7 @@ def select_bone_issue():
     r = bpy.ops.bonemancer.select_issue(index=0)
     pbs = rig.pose.bones
     got = (r, rig.mode, rig.data.bones.active.name if rig.data.bones.active else None,
-           [pb.name for pb in pbs if mod.bone_is_selected(pb)])
+           [pb.name for pb in pbs if compat.bone_is_selected(pb)])
     return (got == ({'FINISHED'}, 'POSE', "spine", ["spine"]), got)
 check("Select selects the issue's bone", select_bone_issue)
 
@@ -146,11 +145,11 @@ def details_draw():
     rig.pose.bones["spine"].constraints.new('COPY_ROTATION')
     run()
     issue = sc.bonemancer_rig_check.issues[0]
-    drawn = record(lambda self, ctx: mod.draw_issue_details(self.layout, ctx, rig, issue, 0), bpy.context)
+    drawn = record(lambda self, ctx: draw.draw_issue_details(self.layout, ctx, rig, issue, 0), bpy.context)
     labels = " ".join(drawn.texts("label"))
     ops = [(d.args[0], d.text, d.result.attrs.get("index")) for d in drawn.drawn("operator")]
     explained = all(why and fix for _h, _i, why, fix in
-                    (mod.issue_explanation(types.SimpleNamespace(check=c)) for c in mod.RIG_CHECKS))
+                    (rig_check.issue_explanation(types.SimpleNamespace(check=c)) for c in rig_check.RIG_CHECKS))
     got = (drawn.texts("label")[0], "Fix:" in labels, ops, explained)
     return (got == ("Broken constraints", True, [("bonemancer.select_issue", "Select", 0),
                                                   ("bonemancer.ignore_issue", "", 0)], True), got)
@@ -159,10 +158,10 @@ check("the highlighted issue explains itself in the panel; every check has a why
 
 def panel_shows_details():
     rig = fresh()
-    before = record(mod.BONEMANCER_PT_rig_check.draw, bpy.context)
+    before = record(panels.BONEMANCER_PT_rig_check.draw, bpy.context)
     rig.pose.bones["spine"].constraints.new('COPY_ROTATION')
     run()
-    after = record(mod.BONEMANCER_PT_rig_check.draw, bpy.context)
+    after = record(panels.BONEMANCER_PT_rig_check.draw, bpy.context)
     got = ([d.text for d in before.drawn("operator")], [d.text for d in after.drawn("operator")],
            "1 issue found" in after.texts("label"))
     return (got == (["Check Rig"], ["Check Again", "Select", ""], True), got)
@@ -195,24 +194,24 @@ check("results are cleared when another rig is picked", cleared_on_pick_change)
 def constraint_list_warning():
     rig = fresh()
     con = rig.pose.bones["spine"].constraints.new('COPY_ROTATION')
-    mod.BONEMANCER_UL_constraints.draw_item(types.SimpleNamespace(layout_type='DEFAULT'), bpy.context, MockLayout(),
+    lists.BONEMANCER_UL_constraints.draw_item(types.SimpleNamespace(layout_type='DEFAULT'), bpy.context, MockLayout(),
                                             rig.pose.bones["spine"], con, 0, None, "", 0)
-    return (mod.constraint_problem(con) == "has no target", mod.constraint_problem(con))
+    return (rig_check.constraint_problem(con) == "has no target", rig_check.constraint_problem(con))
 check("the Bone Sets constraint list uses the same wording", constraint_list_warning)
 
 
 def panel_draws():
     rig = fresh()
     fp = FakePanel()
-    mod.BONEMANCER_PT_rig_check.draw(fp, bpy.context)            # before a check
+    panels.BONEMANCER_PT_rig_check.draw(fp, bpy.context)            # before a check
     run()
-    mod.BONEMANCER_PT_rig_check.draw(fp, bpy.context)            # clean
+    panels.BONEMANCER_PT_rig_check.draw(fp, bpy.context)            # clean
     rig.pose.bones["spine"].constraints.new('COPY_ROTATION')
     run()
-    mod.BONEMANCER_PT_rig_check.draw(fp, bpy.context)            # with results
-    mod.BONEMANCER_PT_rig_check.draw_header_preset(fp, bpy.context)
+    panels.BONEMANCER_PT_rig_check.draw(fp, bpy.context)            # with results
+    panels.BONEMANCER_PT_rig_check.draw_header_preset(fp, bpy.context)
     for i, item in enumerate(sc.bonemancer_rig_check.issues):
-        mod.BONEMANCER_UL_rig_issues.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
+        lists.BONEMANCER_UL_rig_issues.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
 check("panel, header and result rows draw", panel_draws)
 
 
@@ -342,15 +341,15 @@ def python_drivers_when_blocked():
     rig = fresh()
     rig["p"] = 1.0
     add_driver(rig, "location", '["p"]', 0, expr="v +", target=rig)
-    original = mod.python_drivers_blocked
-    mod.python_drivers_blocked = lambda: True
+    original = rig_check.python_drivers_blocked
+    rig_check.python_drivers_blocked = lambda: True
     try:
         run()
         fp = FakePanel()
-        mod.BONEMANCER_PT_rig_check.draw(fp, bpy.context)
+        panels.BONEMANCER_PT_rig_check.draw(fp, bpy.context)
         got = (issues("driver"), sc.bonemancer_rig_check.python_drivers)
     finally:
-        mod.python_drivers_blocked = original
+        rig_check.python_drivers_blocked = original
     run()
     got += (sc.bonemancer_rig_check.python_drivers,)
     return (got == ([], 1, 0), got)
@@ -566,9 +565,7 @@ def pick_switch_during_check():
     broken.pose.bones["root"].constraints.new('COPY_ROTATION')
     clean = make_arm("Clean", ("root",))
     bpy.context.view_layer.objects.active = clean      # the viewport's armature...
-    mod._armature_change_from_viewport = True
-    sc.bonemancer_rig = broken                         # ...differs from the pick
-    mod._armature_change_from_viewport = False
+    selection.follow_viewport_rig(sc, broken)          # ...differs from the pick
     run()
     got = (sc.bonemancer_rig.name, issues(), sc.bonemancer_rig_check.has_run)
     return (got == ("Clean", [], True), got)
@@ -577,7 +574,7 @@ check("results always describe the rig that ends up picked", pick_switch_during_
 
 def icons_exist():
     valid = {i.identifier for i in bpy.types.UILayout.bl_rna.functions["label"].parameters["icon"].enum_items}
-    used = {icon for _h, icon, _l in mod.RIG_CHECKS.values()} | {'VIEWZOOM', 'CHECKMARK', 'SCRIPT', 'INFO',
+    used = {icon for _h, icon, _l in rig_check.RIG_CHECKS.values()} | {'VIEWZOOM', 'CHECKMARK', 'SCRIPT', 'INFO',
                                                                   'RESTRICT_SELECT_OFF', 'ERROR'}
     return (used <= valid, sorted(used - valid))
 check("every Rig Check icon exists in this Blender", icons_exist)
@@ -594,7 +591,7 @@ def listed_rows():
     """Messages the issue list shows, honouring Show Ignored."""
     ul = types.SimpleNamespace(filter_name="", bitflag_filter_item=1 << 30)
     results = sc.bonemancer_rig_check
-    flags, _order = mod.BONEMANCER_UL_rig_issues.filter_items(ul, bpy.context, results, "issues")
+    flags, _order = lists.BONEMANCER_UL_rig_issues.filter_items(ul, bpy.context, results, "issues")
     return [it.message for it, flag in zip(results.issues, flags) if flag]
 
 
@@ -610,9 +607,9 @@ def two_broken():
 
 def ignore_hides():
     rig = two_broken()
-    before = len(mod.visible_issues(sc))
+    before = len(rig_check.visible_issues(sc))
     r = bpy.ops.bonemancer.ignore_issue(index=index_of("unpaired"))
-    got = (r, before, len(mod.visible_issues(sc)), [(e.check, e.bone, e.detail) for e in rig.bonemancer_ignored_issues],
+    got = (r, before, len(rig_check.visible_issues(sc)), [(e.check, e.bone, e.detail) for e in rig.bonemancer_ignored_issues],
            "arm.L: no 'arm.R' on the other side" in listed_rows())
     return (got == ({'FINISHED'}, 3, 2, [("unpaired", "arm.L", "")], False), got)
 check("Ignore hides the issue and drops it from the count", ignore_hides)
@@ -624,10 +621,10 @@ def show_ignored():
     sc.bonemancer_rig_check.show_ignored = True
     try:
         shown = "arm.L: no 'arm.R' on the other side" in listed_rows()
-        count = len(mod.visible_issues(sc))
-        mod.BONEMANCER_PT_rig_check.draw(FakePanel(), bpy.context)
+        count = len(rig_check.visible_issues(sc))
+        panels.BONEMANCER_PT_rig_check.draw(FakePanel(), bpy.context)
         for i, item in enumerate(sc.bonemancer_rig_check.issues):
-            mod.BONEMANCER_UL_rig_issues.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
+            lists.BONEMANCER_UL_rig_issues.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
     finally:
         sc.bonemancer_rig_check.show_ignored = False
     return ((shown, count) == (True, 2), (shown, count))
@@ -639,7 +636,7 @@ def unignore():
     i = index_of("unpaired")
     bpy.ops.bonemancer.ignore_issue(index=i)
     r = bpy.ops.bonemancer.unignore_issue(index=i)
-    got = (r, len(rig.bonemancer_ignored_issues), len(mod.visible_issues(sc)))
+    got = (r, len(rig.bonemancer_ignored_issues), len(rig_check.visible_issues(sc)))
     return (got == ({'FINISHED'}, 0, 3), got)
 check("Stop Ignoring lists the issue again", unignore)
 
@@ -648,7 +645,7 @@ def ignore_is_specific():
     two_broken()
     bpy.ops.bonemancer.ignore_issue(index=index_of("constraint"))   # Copy Rotation only
     run()
-    got = [(c, b, d) for c, b, d in [(i.check, i.bone, i.detail) for i in mod.visible_issues(sc)] if c == "constraint"]
+    got = [(c, b, d) for c, b, d in [(i.check, i.bone, i.detail) for i in rig_check.visible_issues(sc)] if c == "constraint"]
     return (got == [("constraint", "spine", "Copy Location")], got)
 check("ignoring one constraint doesn't hide another on the same bone", ignore_is_specific)
 
@@ -669,9 +666,9 @@ def ignore_survives_reload():
     bpy.ops.wm.save_as_mainfile(filepath=path)
     bpy.ops.wm.open_mainfile(filepath=path)
     sc = bpy.context.scene
-    saved = len(mod.visible_issues(sc))
+    saved = len(rig_check.visible_issues(sc))
     run()
-    got = (saved, [(i.check, i.bone) for i in mod.visible_issues(sc)])
+    got = (saved, [(i.check, i.bone) for i in rig_check.visible_issues(sc)])
     return (got == (2, [("constraint", "spine"), ("constraint", "spine")]), got)
 check("ignores and results survive save and reopen", ignore_survives_reload)
 
@@ -681,7 +678,7 @@ def ignore_follows_rename_operator():
     bpy.ops.bonemancer.ignore_issue(index=index_of("unpaired"))
     bpy.ops.bonemancer.rename_bone(bone_name="arm.L", mode='EXACT', new_name="hand.L")
     run()
-    got = ([e.bone for e in rig.bonemancer_ignored_issues], [i.bone for i in mod.visible_issues(sc) if i.check == "unpaired"])
+    got = ([e.bone for e in rig.bonemancer_ignored_issues], [i.bone for i in rig_check.visible_issues(sc) if i.check == "unpaired"])
     return (got == (["hand.L"], []), got)
 check("ignores follow a bone renamed with Rename", ignore_follows_rename_operator)
 
@@ -690,12 +687,12 @@ def ignore_follows_outside_rename():
     rig = fresh(("root", "spine"))
     add_driver(rig, 'pose.bones["spine"].location', '["missing"]', 0, target=rig)
     run()
-    mod.update_bone_list(sc)                   # the Bone Picker knows the current names
+    selection.update_bone_list(sc)                   # the Bone Picker knows the current names
     bpy.ops.bonemancer.ignore_issue(index=index_of("driver"))
     rig.data.bones["spine"].name = "chest"     # F2 / Outliner rename
-    mod.on_depsgraph_update(sc, bpy.context.evaluated_depsgraph_get())
+    handlers.on_depsgraph_update(sc, bpy.context.evaluated_depsgraph_get())
     run()
-    got = ([(e.bone, e.detail) for e in rig.bonemancer_ignored_issues], [i.check for i in mod.visible_issues(sc)])
+    got = ([(e.bone, e.detail) for e in rig.bonemancer_ignored_issues], [i.check for i in rig_check.visible_issues(sc)])
     return (got == ([("chest", 'OBJECT:Rig:pose.bones["chest"].location[0]')], []), got)
 check("ignores follow an outside rename, including driver paths", ignore_follows_outside_rename)
 
@@ -705,8 +702,8 @@ check("ignores follow an outside rename, including driver paths", ignore_follows
 def fixed_states():
     """{(check, bone or detail): fixed?} for the listed issues, and every row drawn."""
     for i, item in enumerate(sc.bonemancer_rig_check.issues):
-        mod.BONEMANCER_UL_rig_issues.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
-    return {(it.check, it.bone or it.detail): mod.issue_fixed(bpy.context, it) for it in sc.bonemancer_rig_check.issues}
+        lists.BONEMANCER_UL_rig_issues.draw_item(None, bpy.context, MockLayout(), None, item, 0, None, "", i)
+    return {(it.check, it.bone or it.detail): rig_check.issue_fixed(bpy.context, it) for it in sc.bonemancer_rig_check.issues}
 
 
 def broken_everything():
