@@ -81,7 +81,11 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
       pressed while the bone is selected in the viewport; the eye hides it.
       Opening the bone shows **Rename** and **Remove from Set** (both work),
       the same Deform / IK Stretch / Lock IK controls,
-      **Properties (n)** (editable in place; **Add Property** works) and
+      **Properties (n)** (editable in place; **Add Property** works; the gear
+      opens Blender's Edit Property dialog for that bone's property, and
+      renaming, changing min/max or type there shows up in the panel; on a
+      Float made with Add Property, switching Type to Integer and back raises
+      no Python error; X removes it, and Ctrl+Z brings it back) and
       **Constraints (n)** with influence sliders. A constraint with a missing
       target adds ", 1 broken" and a warning icon to the heading, and a warning
       button (with details) in its row.
@@ -140,7 +144,8 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
 - [ ] A file saved with an older Bone Mancer opens with its groups as bone
       sets.
 - [ ] Link the rig into another file and make a library override: sets are
-      editable; bone rename and Add Property are refused with a message.
+      editable; bone rename and Add Property are refused with a message, and
+      bone properties show no gear or X.
       Deleting a set that came from the library file, or removing one of its
       original bones, shows an error and changes nothing.
 - [ ] Delete the picked rig with X, save, reopen: the rig is gone (not kept

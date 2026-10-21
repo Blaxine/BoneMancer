@@ -1165,6 +1165,58 @@ class BONEMANCER_OT_add_custom_prop(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# Blender's Edit Property dialog converts a float property's range to int when
+# its Type is switched to Integer, and fails on the unlimited (±3.4e38) range
+# a property made by a script has.
+INT_RANGE = (-2**31, 2**31 - 1)
+
+
+def make_ui_range_int_safe(owner, key):
+    """Clamp a float custom property's min/max/soft limits to what an int can hold.
+
+    Only out-of-range limits change, so a property with a real range keeps it."""
+    try:
+        ui = owner.id_properties_ui(key)
+    except TypeError:
+        return   # strings, groups and data-blocks have no numeric range
+    limits = {k: v for k, v in ui.as_dict().items() if k in ("min", "max", "soft_min", "soft_max")}
+    clamped = {k: min(max(v, INT_RANGE[0]), INT_RANGE[1]) for k, v in limits.items() if isinstance(v, float)}
+    if any(clamped[k] != limits[k] for k in clamped):
+        ui.update(**clamped)
+
+
+class BONEMANCER_OT_edit_custom_prop(bpy.types.Operator):
+    """Change a custom property's name, type, range, default or description"""
+    bl_idname = "bonemancer.edit_custom_prop"
+    bl_label = "Edit Property"
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+
+    bone_name: StringProperty()
+    prop_name: StringProperty()
+
+    def pose_bone(self, context):
+        rig = get_rig(context.scene)
+        if not rig or rig.library or rig.override_library:
+            return None   # Blender refuses to edit properties of linked or overridden data
+        pb = rig.pose.bones.get(self.bone_name)
+        return pb if pb and self.prop_name in pb.keys() else None
+
+    def execute(self, context):
+        pb = self.pose_bone(context)
+        if not pb:
+            return {'CANCELLED'}
+        make_ui_range_int_safe(pb, self.prop_name)
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        if self.execute(context) != {'FINISHED'}:
+            return {'CANCELLED'}
+        # Blender's own dialog does the editing
+        bpy.ops.wm.properties_edit('INVOKE_DEFAULT', data_path=pose_bone_path(self.bone_name),
+                                   property_name=self.prop_name)
+        return {'FINISHED'}
+
+
 class BONEMANCER_OT_add_bone_to_set(bpy.types.Operator):
     bl_idname = "bonemancer.add_bone_to_set"
     bl_label = "Add Bone to Bone Set"
@@ -1590,7 +1642,7 @@ def draw_set_bone(context, layout, rig, grp, entry, pb):
     header, props = sub_panel(body, rig, entry, "show_custom_props", *path)
     header.label(text=f"Properties ({len(keys)})")
     if props:
-        draw_custom_props(props.column(), pb, keys, entry.bone_name)
+        draw_custom_props(props.column(), rig, pb, keys)
 
     broken = sum(1 for con in pb.constraints if constraint_problem(con))
     header, cons = sub_panel(body, rig, entry, "show_constraints", *path)
@@ -1608,24 +1660,36 @@ def draw_set_bone(context, layout, rig, grp, entry, pb):
             )
 
 
-def draw_custom_props(col, pb, keys, bone_name):
-    # Live-draw every custom property in its native widget
+def pose_bone_path(bone_name):
+    """Path from the context to the picked rig's pose bone, for Blender's wm.properties_* operators."""
+    return f"scene.bonemancer_rig.pose.bones{path_key(bone_name)}"
+
+
+def draw_custom_props(col, rig, pb, keys):
+    """Laid out like Blender's own Custom Properties panel: name, value, Edit (gear), Remove."""
+    # Blender refuses to edit properties of linked or overridden data
+    editable = rig.library is None and rig.override_library is None
     for key in keys:
-        val = pb[key]
-        # Nested groups have no single widget
-        if hasattr(val, "keys"):
-            col.label(text=f"{key} (property group)")
-            continue
-        # Arrays: one field per item
-        if isinstance(val, (list, tuple)):
-            col.label(text=key)
-            row = col.row(align=True)
-            for i in range(len(val)):
-                row.prop(pb, f'{path_key(key)}[{i}]', text=str(i))
-            continue
-        # Everything else: let Blender pick the widget
-        col.prop(pb, path_key(key), text=key)
-    col.operator("bonemancer.add_custom_prop", text="Add Property", icon='ADD').bone_name = bone_name
+        split = col.split(factor=0.4, align=True)
+        label = split.row()
+        label.alignment = 'RIGHT'
+        label.label(text=key, translate=False)
+        value = split.row(align=True)
+        if hasattr(pb[key], "keys"):
+            # Nested groups have no single widget
+            value.label(text="(property group)")
+        else:
+            value.prop(pb, path_key(key), text="")
+        if editable:
+            buttons = value.row(align=True)
+            buttons.alignment = 'RIGHT'
+            op = buttons.operator("bonemancer.edit_custom_prop", text="", icon='PREFERENCES', emboss=False)
+            op.bone_name = pb.name
+            op.prop_name = key
+            op = buttons.operator("wm.properties_remove", text="", icon='X', emboss=False)
+            op.data_path = pose_bone_path(pb.name)
+            op.property_name = key
+    col.operator("bonemancer.add_custom_prop", text="Add Property", icon='ADD').bone_name = pb.name
 
 class BONEMANCER_UL_constraints(bpy.types.UIList):
     """Scrollable list of constraints with influence sliders + warning button"""
@@ -2425,6 +2489,7 @@ classes = [
     BONEMANCER_OT_remove_set,
     BONEMANCER_OT_rename_bone,
     BONEMANCER_OT_add_custom_prop,
+    BONEMANCER_OT_edit_custom_prop,
     BONEMANCER_OT_add_bone_to_set,
     BONEMANCER_OT_toggle_set_foldout,
     BONEMANCER_OT_show_bone_relations,

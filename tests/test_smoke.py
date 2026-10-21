@@ -832,6 +832,78 @@ def ui10():
 check("UI10 Deform edits the edit bone in Edit Mode, so unticking it survives leaving Edit Mode", ui10)
 
 
+def prop_buttons(drawn):
+    """(operator, bone, property) for each Edit/Remove button; Remove's bone is where its data path leads."""
+    found = []
+    for d in drawn.drawn("operator"):
+        a = d.result.attrs
+        if d.args[0] == "bonemancer.edit_custom_prop":
+            found.append((d.args[0], a["bone_name"], a["prop_name"]))
+        elif d.args[0] == "wm.properties_remove":
+            found.append((d.args[0], eval("bpy.context." + a["data_path"]).name, a["property_name"]))
+    return found
+
+
+def ui11():
+    reset(); arm = make_arm("Rig", ("a", "b")); pick(arm, from_viewport=False)
+    pb = arm.pose.bones["a"]
+    pb["ik_fk"] = 1.0
+    pb['we"ird'] = 2
+    add("a", "Arms")
+    entry = arm.bonemancer_sets["Arms"].bones[0]
+    arm.bonemancer_sets["Arms"].show_expanded = entry.show_details = entry.show_custom_props = True
+    buttons = prop_buttons(record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context))
+    removed = bpy.ops.wm.properties_remove(data_path=mod.pose_bone_path("a"), property_name='we"ird')
+    got = (sorted(buttons), removed, list(pb.keys()))
+    return (got == (sorted([("bonemancer.edit_custom_prop", "a", "ik_fk"), ("wm.properties_remove", "a", "ik_fk"),
+                            ("bonemancer.edit_custom_prop", "a", 'we"ird'), ("wm.properties_remove", "a", 'we"ird')]),
+                    {'FINISHED'}, ["ik_fk"]), got)
+check("UI11 each bone property has Edit and Remove buttons that reach that bone", ui11)
+
+
+class IntCheck(bpy.types.PropertyGroup):
+    """An RNA int with the same range check as the Edit Property dialog's min_int / max_int."""
+    value: bpy.props.IntProperty()
+
+
+def int_conversion_fails(pb, key):
+    """Whether Blender's float-to-Integer type switch would fail on this property's range."""
+    holder = bpy.context.scene.bm_int_check
+    try:
+        for v in pb.id_properties_ui(key).as_dict().values():
+            if isinstance(v, float):
+                holder.value = int(v)
+    except ValueError:
+        return True
+    return False
+
+
+def ui12():
+    reset(); arm = make_arm("Rig", ("a",)); pick(arm, from_viewport=False)
+    pb = arm.pose.bones["a"]
+    bpy.ops.bonemancer.add_custom_prop(bone_name="a", prop_name="stretch", prop_type='FLOAT', default_float=0.5)
+    pb["ranged"] = 0.5
+    pb.id_properties_ui("ranged").update(min=0.0, max=1.0, soft_min=0.0, soft_max=1.0)
+    pb["count"] = 3
+    pb["label"] = "x"
+    bpy.utils.register_class(IntCheck)
+    bpy.types.Scene.bm_int_check = bpy.props.PointerProperty(type=IntCheck)
+    try:
+        before = int_conversion_fails(pb, "stretch")
+        results = [bpy.ops.bonemancer.edit_custom_prop(bone_name="a", prop_name=k)
+                   for k in ("stretch", "ranged", "count", "label")]
+        after = int_conversion_fails(pb, "stretch")
+    finally:
+        del bpy.types.Scene.bm_int_check
+        bpy.utils.unregister_class(IntCheck)
+    ranged = pb.id_properties_ui("ranged").as_dict()
+    got = (before, after, results, (ranged["min"], ranged["max"]), pb.id_properties_ui("count").as_dict()["max"],
+           round(pb["stretch"], 3),
+           bpy.ops.bonemancer.edit_custom_prop(bone_name="a", prop_name="nope"))
+    return (got == (True, False, [{'FINISHED'}] * 4, (0.0, 1.0), 2**31 - 1, 0.5, {'CANCELLED'}), got)
+check("UI12 Edit Property makes a script-made float safe to switch to Integer, and leaves real ranges alone", ui12)
+
+
 def registered_props():
     return sorted(p for p in dir(bpy.types.Scene) + dir(bpy.types.Object) if p.startswith(("rmv2_", "bonemancer_")))
 

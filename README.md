@@ -30,7 +30,9 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
   the eye hides it. Open a bone to:
   - rename it or remove it from the set
   - tick Deform on or off, and set IK Stretch and Lock IK X / Y / Z
-  - edit its custom properties in place, or add new ones
+  - edit its custom properties in place, add new ones, or use the gear to
+    change one's name, type, range, default or description (Blender's own Edit
+    Property dialog) and the X to remove it
   - see its constraints with influence sliders; broken ones are counted in the
     heading and flagged in the list
   - bones deleted or renamed outside Bone Mancer are flagged, and renames done

@@ -45,6 +45,7 @@ def write_library():
     lib_set = arm.bonemancer_sets.add()   # a set defined in the library file
     lib_set.name = "Lib"
     lib_set.bones.add().bone_name = "hip"
+    arm.pose.bones["hip"]["lib_prop"] = 1.0
     # Rig Check: two broken constraints, the knee one ignored in the library file
     for bone in ("hip", "knee"):
         arm.pose.bones[bone].constraints.new('COPY_ROTATION')
@@ -150,6 +151,17 @@ check("override rig is editable", make_override)
 
 check("override rig: Bone Sets fold state is saved on the sets",
       lambda: (set_panels(rig) == ["panel_prop"], set_panels(rig)))
+def override_prop_buttons():
+    entry = rig.bonemancer_sets["Lib"].bones[0]
+    rig.bonemancer_sets["Lib"].show_expanded = entry.show_details = entry.show_custom_props = True
+    try:
+        drawn = record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context)
+    finally:
+        rig.bonemancer_sets["Lib"].show_expanded = entry.show_details = entry.show_custom_props = False
+    got = ([d.args[0] for d in drawn.drawn("operator") if d.args[0].startswith("wm.properties_")],
+           any(d.args[1] == '["lib_prop"]' for d in drawn.drawn("prop") if len(d.args) > 1))
+    return (got == ([], True), got)
+check("override rig: properties show their values but no Edit/Remove (Blender refuses them)", override_prop_buttons)
 check("override rig: add bones to a set", lambda: (add("hip") == add("knee") == {'FINISHED'}, None))
 check("override rig: import bone collections",
       lambda: (bpy.ops.bonemancer.import_bone_collections() == {'FINISHED'}
