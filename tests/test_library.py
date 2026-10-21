@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy
-from helpers import check, finish, load_addon, refused, make_arm, clear_data, tmp_dir
+from helpers import check, finish, load_addon, refused, make_arm, clear_data, tmp_dir, record
 
 mod = load_addon()
 check("register()", mod.register)
@@ -117,6 +117,23 @@ def linked_rig_check():
                     mod.LINKED_IGNORE_MESSAGE), got)
 check("linked rig: checked with library ignores; ignore, stop ignoring and select refused", linked_rig_check)
 
+def set_panels(rig):
+    """Which kind of sub-panel the Bone Sets panel uses for rig's sets: panel_prop or panel."""
+    return sorted({d.kind for d in record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context).drawn("panel", "panel_prop")})
+
+
+def linked_sets_fold():
+    sc.collection.objects.link(linked)
+    try:
+        pick(linked)
+        got = set_panels(linked)
+    finally:
+        pick(None)
+        sc.collection.objects.unlink(linked)
+    return (got == ["panel"], got)
+check("linked rig: Bone Sets fold with sidebar state, since the rig can't change", linked_sets_fold)
+
+
 rig = None
 
 
@@ -131,6 +148,8 @@ def make_override():
     return (mod.rig_is_editable(rig), rig.name)
 check("override rig is editable", make_override)
 
+check("override rig: Bone Sets fold state is saved on the sets",
+      lambda: (set_panels(rig) == ["panel_prop"], set_panels(rig)))
 check("override rig: add bones to a set", lambda: (add("hip") == add("knee") == {'FINISHED'}, None))
 check("override rig: import bone collections",
       lambda: (bpy.ops.bonemancer.import_bone_collections() == {'FINISHED'}

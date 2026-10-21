@@ -7,7 +7,7 @@ import types
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy
-from helpers import check, finish, load_addon, make_arm, clear_data, tmp_dir, FakePanel, MockLayout
+from helpers import check, finish, load_addon, make_arm, clear_data, tmp_dir, FakePanel, MockLayout, record
 
 mod = load_addon()
 check("register()", mod.register)
@@ -141,14 +141,32 @@ def select_bad_index():
 check("Select with no such issue cancels", select_bad_index)
 
 
-def explain_draws():
+def details_draw():
     rig = fresh()
     rig.pose.bones["spine"].constraints.new('COPY_ROTATION')
     run()
-    for index in (0, 9):   # an issue, and one that no longer exists
-        mod.BONEMANCER_OT_explain_issue.draw(types.SimpleNamespace(index=index, layout=MockLayout()), bpy.context)
-    return (all(len(lines) >= 2 for _h, _i, lines in mod.RIG_CHECKS.values()), None)
-check("Explain draws, and every check has an explanation", explain_draws)
+    issue = sc.bonemancer_rig_check.issues[0]
+    drawn = record(lambda self, ctx: mod.draw_issue_details(self.layout, ctx, rig, issue, 0), bpy.context)
+    labels = " ".join(drawn.texts("label"))
+    ops = [(d.args[0], d.text, d.result.attrs.get("index")) for d in drawn.drawn("operator")]
+    explained = all(why and fix for _h, _i, why, fix in
+                    (mod.issue_explanation(types.SimpleNamespace(check=c)) for c in mod.RIG_CHECKS))
+    got = (drawn.texts("label")[0], "Fix:" in labels, ops, explained)
+    return (got == ("Broken constraints", True, [("bonemancer.select_issue", "Select", 0),
+                                                  ("bonemancer.ignore_issue", "", 0)], True), got)
+check("the highlighted issue explains itself in the panel; every check has a why and a fix", details_draw)
+
+
+def panel_shows_details():
+    rig = fresh()
+    before = record(mod.BONEMANCER_PT_rig_check.draw, bpy.context)
+    rig.pose.bones["spine"].constraints.new('COPY_ROTATION')
+    run()
+    after = record(mod.BONEMANCER_PT_rig_check.draw, bpy.context)
+    got = ([d.text for d in before.drawn("operator")], [d.text for d in after.drawn("operator")],
+           "1 issue found" in after.texts("label"))
+    return (got == (["Check Rig"], ["Check Again", "Select", ""], True), got)
+check("the panel says how many issues and shows the highlighted one's details", panel_shows_details)
 
 
 def unchanged():

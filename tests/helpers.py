@@ -105,10 +105,72 @@ def clear_data():
 class MockLayout:
     """Stands in for UILayout so panel draw() code runs headless."""
     def __init__(self, *a, **k): pass
-    def __getattr__(self, n): return MockLayout()
+    def __getattr__(self, n):
+        if n in ("panel", "panel_prop"):
+            return lambda *a, **k: (MockLayout(), MockLayout())   # (header, body)
+        return MockLayout()
     def __call__(self, *a, **k): return MockLayout()
     def __setattr__(self, n, v): pass
 
 
 class FakePanel:
     layout = MockLayout()
+
+
+class Drawn:
+    """One thing a RecordingLayout was asked to draw."""
+    def __init__(self, kind, args, kwargs, layout, result):
+        self.kind, self.args, self.kwargs, self.layout, self.result = kind, args, kwargs, layout, result
+
+    @property
+    def text(self):
+        return self.kwargs.get("text", "")
+
+    @property
+    def enabled(self):
+        return self.layout.is_enabled()
+
+
+class RecordingLayout:
+    """Like MockLayout, but writes down every label, operator, prop and list it draws, in order."""
+    def __init__(self, log=None, parent=None):
+        self.__dict__.update(log=[] if log is None else log, parent=parent, attrs={})
+
+    def __setattr__(self, n, v):
+        self.attrs[n] = v
+
+    def __getattr__(self, n):
+        if n.startswith("__"):
+            raise AttributeError(n)
+        def call(*a, **k):
+            child = RecordingLayout(self.log, self)
+            self.log.append(Drawn(n, a, k, self, child))
+            # (header, body); the body is None while the sub-panel is closed
+            if n == "panel_prop":
+                return child, (RecordingLayout(self.log, self) if getattr(a[0], a[1]) else None)
+            if n == "panel":
+                return child, (None if k.get("default_closed") else RecordingLayout(self.log, self))
+            return child
+        return call
+
+    def is_enabled(self):
+        node = self
+        while node is not None:
+            if node.attrs.get("enabled", True) is False:
+                return False
+            node = node.parent
+        return True
+
+    def drawn(self, *kinds):
+        return [d for d in self.log if not kinds or d.kind in kinds]
+
+    def texts(self, *kinds):
+        return [d.text for d in self.drawn(*kinds)]
+
+
+def record(draw, *args):
+    """Run a draw(self, context) style function and return what it drew."""
+    import types
+    layout = RecordingLayout()
+    draw(types.SimpleNamespace(layout=layout), *args)
+    return layout

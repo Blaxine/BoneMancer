@@ -4,6 +4,7 @@
 import bpy
 import math
 import re
+import textwrap
 from bpy.app.handlers import persistent
 from bpy.props import StringProperty, IntProperty,FloatProperty,BoolProperty, CollectionProperty, EnumProperty, PointerProperty
 from bpy.types import UIList, Operator, Panel, PropertyGroup
@@ -76,12 +77,19 @@ class BONEMANCER_PG_SetBone(PropertyGroup):
     show_custom_props: BoolProperty(
         name="Show Custom Props",
         default=False,
-        description="Expand custom properties panel",
+        description="Expand the custom properties of this bone",
         override={'LIBRARY_OVERRIDABLE'}
     )
     show_constraints: BoolProperty(
         name="Show Constraints",
         default=False,
+        description="Expand the constraints of this bone",
+        override={'LIBRARY_OVERRIDABLE'}
+    )
+    show_details: BoolProperty(
+        name="Show Details",
+        default=False,
+        description="Show this bone's actions, properties and constraints",
         override={'LIBRARY_OVERRIDABLE'}
     )
     # Active row of the constraint list drawn for this bone
@@ -145,10 +153,6 @@ class BONEMANCER_PG_ShapeKey(bpy.types.PropertyGroup):
 
 class BONEMANCER_PG_ShapeKeyMesh(bpy.types.PropertyGroup):
     object_name:      StringProperty(name="Mesh Object Name")
-    show_shape_keys:  BoolProperty(
-        name="Show Shape Keys", default=False,
-        description="Toggle visibility of this mesh’s shape-key list"
-    )
     shape_keys:       CollectionProperty(type=BONEMANCER_PG_ShapeKey)
     shape_keys_index: IntProperty(default=0)
 
@@ -204,10 +208,9 @@ def listed_shape_keys(scene):
 
 
 def scan_shape_keys_for_armature(scene, arm_obj):
-    """Rebuild the scanner list, keeping each mesh's expanded state and active rows."""
+    """Rebuild the scanner list, keeping the highlighted mesh and shape keys."""
     global _suppress_shape_key_update
     settings = scene.bonemancer_shape_keys
-    expanded = {grp.object_name for grp in settings.object_groups if grp.show_shape_keys}
     active_key = {grp.object_name: grp.shape_keys[grp.shape_keys_index].key_name
                   for grp in settings.object_groups if 0 <= grp.shape_keys_index < len(grp.shape_keys)}
     groups = settings.object_groups
@@ -224,7 +227,6 @@ def scan_shape_keys_for_armature(scene, arm_obj):
             key_blocks = obj.data.shape_keys.key_blocks
             grp = settings.object_groups.add()
             grp.object_name = mesh_name
-            grp.show_shape_keys = mesh_name in expanded
             for key_name in key_names:
                 item = grp.shape_keys.add()
                 item.object_name = mesh_name
@@ -249,7 +251,7 @@ def refresh_shape_keys(scene):
 
 class BONEMANCER_OT_scan_shape_keys(bpy.types.Operator):
     bl_idname      = "bonemancer.scan_shape_keys"
-    bl_label       = "Scan Rig For Shape Keys"
+    bl_label       = "Refresh Shape Keys"
     bl_description = ("Rebuild the list of meshes the rig deforms and their shape keys now. "
                       "It also refreshes on its own when meshes or shape keys change")
     bl_options     = {'REGISTER', 'UNDO'}
@@ -260,20 +262,6 @@ class BONEMANCER_OT_scan_shape_keys(bpy.types.Operator):
             self.report({'WARNING'}, "Select an armature first")
             return {'CANCELLED'}
         scan_shape_keys_for_armature(context.scene, arm)
-        return {'FINISHED'}
-
-class BONEMANCER_OT_toggle_shape_keys(bpy.types.Operator):
-    bl_idname = "bonemancer.toggle_shape_keys"
-    bl_label  = "Toggle Shape Keys Visibility"
-
-    index: IntProperty()
-
-    def execute(self, context):
-        groups = context.scene.bonemancer_shape_keys.object_groups
-        if not 0 <= self.index < len(groups):
-            return {'CANCELLED'}
-        grp = groups[self.index]
-        grp.show_shape_keys = not grp.show_shape_keys
         return {'FINISHED'}
 
 def keyframes_at(fcurve, frame):
@@ -315,10 +303,11 @@ class BONEMANCER_OT_toggle_shape_keyframe(bpy.types.Operator):
 class BONEMANCER_UL_shape_key_meshes(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         row = layout.row(align=True)
-        row.prop(item, "object_name", text="", emboss=False, icon='MESH_DATA')
-        icon = 'TRIA_DOWN' if item.show_shape_keys else 'TRIA_RIGHT'
-        op = row.operator("bonemancer.toggle_shape_keys", text="", emboss=False, icon=icon)
-        op.index = index
+        row.label(text=item.object_name, icon='MESH_DATA')
+        count = row.row(align=True)
+        count.alignment = 'RIGHT'
+        count.active = False
+        count.label(text=plural(len(item.shape_keys), "key"))
 
 class BONEMANCER_UL_shape_keys(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
@@ -358,36 +347,47 @@ def tag_addon_panels(context):
 
 
 class BONEMANCER_PT_shape_keys(bpy.types.Panel):
-    bl_label      = "Shape Key Scanner"
+    bl_label      = "Shape Keys"
     bl_idname     = "BONEMANCER_PT_shape_keys"
     bl_space_type = 'VIEW_3D'
     bl_region_type= 'UI'
     bl_category   = 'Bonemancer'
     bl_options    = {'DEFAULT_CLOSED'}
 
+    def draw_header_preset(self, context):
+        # The list refreshes on its own; this is for when it seems out of date
+        self.layout.operator("bonemancer.scan_shape_keys", text="", icon='FILE_REFRESH', emboss=False)
+
     def draw(self, context):
         layout   = self.layout
         settings = context.scene.bonemancer_shape_keys
+        if not get_rig(context.scene):
+            hint(layout, context, NO_RIG_HINT)
+            return
+        if not settings.object_groups:
+            hint(layout, context, "No mesh that follows this rig has shape keys yet. "
+                                  "They show up here as soon as one does.")
+            return
 
-        layout.operator("bonemancer.scan_shape_keys", icon='FILE_REFRESH')
         layout.template_list(
             "BONEMANCER_UL_shape_key_meshes", "",
             settings, "object_groups",
             settings, "object_groups_index",
-            rows=5
+            rows=min(max(len(settings.object_groups), 2), 4)
         )
-
+        # The highlighted mesh's shape keys
         idx = settings.object_groups_index
         if 0 <= idx < len(settings.object_groups):
             grp = settings.object_groups[idx]
-            if grp.show_shape_keys:
-                layout.separator()
-                layout.template_list(
-                    "BONEMANCER_UL_shape_keys", "",
-                    grp, "shape_keys",
-                    grp, "shape_keys_index",
-                    rows=5
-                )
+            if not grp.shape_keys:
+                hint(layout, context, f"{grp.object_name} only has its Basis key.")
+                return
+            layout.template_list(
+                "BONEMANCER_UL_shape_keys", "",
+                grp, "shape_keys",
+                grp, "shape_keys_index",
+                rows=min(max(len(grp.shape_keys), 3), 8)
+            )
 
 class BONEMANCER_OT_show_bone_relations(bpy.types.Operator):
     bl_idname = "bonemancer.show_bone_relations"
@@ -918,23 +918,6 @@ class BONEMANCER_OT_remove_set(bpy.types.Operator):
                 return {'FINISHED'}
         return {'CANCELLED'}
 
-class BONEMANCER_OT_toggle_bone_constraints(bpy.types.Operator):
-    bl_idname = "bonemancer.toggle_bone_constraints"
-    bl_label = "Toggle Constraints Foldout"
-    bl_description = "Expand or collapse the constraints list for this bone"
-
-    bone_name: StringProperty()
-
-    def execute(self, context):
-        # Find the bone in any group
-        for g in rig_sets(get_rig(context.scene)):
-            for b in g.bones:
-                if b.bone_name == self.bone_name:
-                    b.show_constraints = not b.show_constraints
-                    return {"FINISHED"}
-        return {"CANCELLED"}
-
-
 class BONEMANCER_OT_rename_bone(bpy.types.Operator):
     bl_idname = "bonemancer.rename_bone"
     bl_label = "Rename Bone"
@@ -1386,45 +1369,108 @@ class BONEMANCER_OT_import_bone_collections(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# --- Sidebar helpers -----------------------------------------------------
+
+NO_RIG_HINT = "Pick an armature in the Rig panel first."
+
+
+def text_lines(context, text):
+    """text split into lines that fit the sidebar; labels don't wrap on their own."""
+    region = getattr(context, "region", None)
+    width = region.width if region else 300
+    # ui_scale is 0 when Blender runs without a window
+    scale = (context.preferences.system.ui_scale if context.preferences else 0) or 1.0
+    # About 5.5 px per character at scale 1, less the panel's margins
+    return textwrap.wrap(text, max(24, int((width - 40 * scale) / (5.5 * scale))))
+
+
+def wrapped_label(layout, context, text, icon='NONE'):
+    col = layout.column(align=True)
+    col.scale_y = 0.8
+    for i, line in enumerate(text_lines(context, text)):
+        # Indent follow-on lines under the icon
+        col.label(text=line, icon=icon if i == 0 else ('BLANK1' if icon != 'NONE' else 'NONE'))
+    return col
+
+
+def hint(layout, context, text, icon='NONE'):
+    """Greyed guidance text."""
+    wrapped_label(layout, context, text, icon).active = False
+
+
+def sub_panel(layout, rig, data, prop, *path):
+    """A collapsible sub-panel, (header, body); body is None while closed.
+
+    Its open state is data.prop, which saves with the rig. A rig linked without
+    an override can't be changed, so there the sidebar keeps the state instead.
+    """
+    if rig_is_editable(rig):
+        return layout.panel_prop(data, prop)
+    return layout.panel("_".join(("BONEMANCER", rig.name, prop) + path), default_closed=not getattr(data, prop))
+
+
+def plural(count, word):
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
 class BONEMANCER_PT_rig(bpy.types.Panel):
-    bl_label = "Bonemancer Rig Central"
+    bl_label = "Rig"
     bl_idname = "BONEMANCER_PT_rig"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'Bonemancer'
-    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         layout = self.layout
-        scene  = context.scene
-        armatures = [obj for obj in context.scene.objects if obj.type =='ARMATURE']
-        if not armatures:
-            #Show warning if no armatures
-            layout.label(text="Add an armature", icon='ERROR')
-            return  # Skip drawing the bone picker
-        else:
-            # Armature selector
-            layout.prop(scene, "bonemancer_rig", text="Armature")
+        scene = context.scene
+        if not any(obj.type == 'ARMATURE' for obj in scene.objects):
+            hint(layout, context, "This scene has no armature yet. Add one to get started.")
+            layout.operator("object.armature_add", text="Add Armature", icon='ADD')
+            return
+        layout.prop(scene, "bonemancer_rig", text="Armature")
+        if not get_rig(scene):
+            hint(layout, context, "Pick the armature you want to work on. Clicking one in the viewport picks it too.")
 
-            # Bone Picker box
+
+class BONEMANCER_PT_bones(bpy.types.Panel):
+    bl_label = "Bones"
+    bl_idname = "BONEMANCER_PT_bones"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Bonemancer'
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        rig = get_rig(scene)
+        if not rig:
+            hint(layout, context, NO_RIG_HINT)
+            return
+        settings = scene.bonemancer_settings
+        layout.template_list(
+            "BONEMANCER_UL_bone_picker", "",
+            settings, "bone_selection",
+            settings, "bone_selection_index",
+            rows=6,
+        )
+
+        count = len(selected_bone_names(rig))
+        row = layout.row()
+        row.scale_y = 1.3
+        row.enabled = count > 0
+        text = f"Add {count} Selected to a Bone Set" if count else "Select Bones to Add Them to a Bone Set"
+        row.operator("bonemancer.add_bone_to_set", text=text, icon='ADD').use_selected = True
+
+        # Actions for the highlighted bone, instead of icons on every row
+        idx = settings.bone_selection_index
+        if 0 <= idx < len(settings.bone_selection):
+            name = settings.bone_selection[idx].name
             box = layout.box()
-            header = box.row()
-            header.label(text="Bone Picker")
-            count = len(selected_bone_names(get_rig(scene)))
-            add_row = header.row()
-            add_row.enabled = count > 0
-            op = add_row.operator("bonemancer.add_bone_to_set",
-                                  text=f"Add Selected to Bone Set ({count})", icon='ADD')
-            op.use_selected = True
-            box.template_list(
-                    "BONEMANCER_UL_bone_picker",
-                    "",
-                    scene.bonemancer_settings,
-                    "bone_selection",
-                    scene.bonemancer_settings,
-                    "bone_selection_index",
-                    rows=6,
-                )
+            box.label(text=name, icon='BONE_DATA')
+            row = box.row(align=True)
+            row.operator("bonemancer.rename_bone", text="Rename", icon='GREASEPENCIL').bone_name = name
+            row.operator("bonemancer.show_bone_relations", text="Relations", icon='ORIENTATION_PARENT').bone_name = name
+
 
 class BONEMANCER_PT_bone_sets(bpy.types.Panel):
     bl_label = "Bone Sets"
@@ -1432,154 +1478,119 @@ class BONEMANCER_PT_bone_sets(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'Bonemancer'
-    bl_options = {'DEFAULT_CLOSED'}
-
-
-    def _draw_bone_buttons(self, row, set_name, bone_name, pbone):
-
-            # Hide/Unhide (state of the armature picked in the panel)
-            hidden = is_hidden(pbone)
-            icon = 'HIDE_ON' if hidden else 'HIDE_OFF'
-            tog = row.operator("bonemancer.toggle_bone", text="", icon=icon, depress=hidden)
-            tog.bone_name = bone_name
-
-            # Rename
-            edit = row.operator("bonemancer.rename_bone", text="", icon='FILE_TEXT')
-            edit.bone_name  = bone_name
-
-            # Remove
-            rem = row.operator("bonemancer.remove_bone_from_set", text="", icon='X')
-            rem.set_name = set_name
-            rem.bone_name  = bone_name
 
     def draw(self, context):
-        armatures = [obj for obj in bpy.context.scene.objects if obj.type =='ARMATURE']
-        if not armatures:
-             self.layout.label(text="Add or select an armature", icon='ERROR')
-        else:
-            layout   = self.layout
-            scene    = context.scene
-            obj      = get_rig(scene)
-
-            # Early exit if no valid armature
-            if not obj:
-                layout.label(text="Select an armature", icon='ERROR')
-                return
-
-            # Fetch groups
-            groups = obj.bonemancer_sets
-
-            if not groups:
-                layout.label(text="No Bone Sets yet", icon='INFO')
+        layout = self.layout
+        rig = get_rig(context.scene)
+        if not rig:
+            hint(layout, context, NO_RIG_HINT)
+            return
+        if not rig.bonemancer_sets:
+            hint(layout, context, "Bone Sets keep the bones you use often in one place. "
+                                  "Add bones from the Bones panel, or start from the rig's bone collections.")
             layout.operator("bonemancer.import_bone_collections", icon='IMPORT')
-
-            # Draw each collection group
-            for grp in groups:
-                box    = layout.box()
-                header = box.row(align=True)
-
-                # Foldout toggle
-                icon = 'TRIA_DOWN' if grp.show_expanded else 'TRIA_RIGHT'
-                op   = header.operator(
-                    "bonemancer.toggle_set_foldout",
-                    text="",
-                    icon=icon,
-                    emboss=False
-                )
-                op.set_name = grp.name
-
-                # Title + Remove button
-                header.label(text=grp.name, icon='OUTLINER_COLLECTION')
-
-                group_icon = 'HIDE_ON' if set_is_hidden(obj, grp) else 'HIDE_OFF'
-                hide_show_group = header.operator("bonemancer.toggle_set", text="", icon=group_icon)
-                hide_show_group.set_name = grp.name
-
-                remg = header.operator("bonemancer.remove_set", text="", icon='TRASH')
-                remg.set_name = grp.name
-
-                # Bones inside group
-                if grp.show_expanded:
-                    for b in grp.bones:
-                        row = box.row(align=True)
-                        pb  = obj.pose.bones.get(b.bone_name)
-                        if not pb:
-                            # Bone was deleted or renamed outside of Bonemancer
-                            row.label(text=f"{b.bone_name} (missing)", icon='ERROR')
-                            rem = row.operator("bonemancer.remove_bone_from_set", text="", icon='X')
-                            rem.set_name = grp.name
-                            rem.bone_name  = b.bone_name
-                            continue
-                        row.label(text=b.bone_name, icon='BONE_DATA')
-                        # Highlight if selected in viewport
-                        op = row.operator(
-                            "bonemancer.select_bone",
-                            text="",
-                            icon='RESTRICT_SELECT_OFF',
-                            depress=bone_is_selected(pb)
-                        )
-                        op.bone_name = b.bone_name
-
-                        row.prop(
-                        b, "show_custom_props",
-                        icon = 'RNA',text="")
-                        icon_c = 'CONSTRAINT_BONE'
-                        togc   = row.operator(
-                            "bonemancer.toggle_bone_constraints",
-                            text="",
-                        icon=icon_c,
-                            depress=b.show_constraints)
-                        togc.bone_name = b.bone_name
-                        self._draw_bone_buttons(row, grp.name, b.bone_name, pb)
-                         # CUSTOM PROPLS FOLDOUT
-                        if b.show_custom_props:
-                            cbox = box.box().column()
-                            cbox.label(text="Custom Props:", icon='RNA')
-                            # Live‐draw every custom property in its native widget
-                            for key in pb.keys():
-                                if key != 'constraint_active_index':
-                                    val = pb[key]
-                                    # Nested groups have no single widget
-                                    if hasattr(val, "keys"):
-                                        cbox.label(text=f"{key} (property group)")
-                                        continue
-                                    # 1) Arrays → grouped fields
-                                    if isinstance(val, (list, tuple)):
-                                        cbox.label(text=key)
-                                        row = cbox.row(align=True)
-                                        for i in range(len(val)):
-                                            row.prop(pb, f'{path_key(key)}[{i}]', text=str(i))
-                                        continue
-
-                                    # 2–4) All other types → let Blender pick the widget
-                                    row = cbox.row()
-                                    row.prop(pb, path_key(key), text=key)
-
-                            # “Add Property” button stays the same
-                            op = cbox.operator("bonemancer.add_custom_prop", text="Add Property", icon='ADD')
-                            op.bone_name = b.bone_name
+            return
+        for grp in rig.bonemancer_sets:
+            draw_bone_set(context, layout, rig, grp)
+        layout.operator("bonemancer.import_bone_collections", icon='IMPORT')
 
 
-                        # Expanded Constraints
-                        if b.show_constraints:
-                            cbox = box.box().column()
-                            cbox.label(
-                                text=f"Constraints on {b.bone_name}",
-                                icon='CONSTRAINT_BONE'
-                                )
+def draw_bone_set(context, layout, rig, grp):
+    # A collapsible sub-panel per set; its open state is the set's show_expanded
+    header, body = sub_panel(layout, rig, grp, "show_expanded", grp.name)
+    header.label(text=grp.name, icon='OUTLINER_COLLECTION')
+    count = header.row(align=True)
+    count.alignment = 'RIGHT'
+    count.active = False
+    count.label(text=plural(len(grp.bones), "bone"))
+    op = header.operator("bonemancer.toggle_set", text="", emboss=False,
+                         icon='HIDE_ON' if set_is_hidden(rig, grp) else 'HIDE_OFF')
+    op.set_name = grp.name
+    header.operator("bonemancer.remove_set", text="", icon='TRASH', emboss=False).set_name = grp.name
+    if body is None:
+        return
 
-                            if not pb.constraints:
-                                cbox.label(text="(no constraints)", icon='INFO')
-                            else:
-                                 cbox.template_list(
-                                    "BONEMANCER_UL_constraints",
-                                    "",                        # custom list_id
-                                    pb,                        # data: PoseBone
-                                    "constraints",             # its CollectionProperty
-                                    b,                         # active_data: BONEMANCER_PG_SetBone PG
-                                    "constraint_index",        # its index IntProperty
-                                    rows=4
-                                )
+    if not grp.bones:
+        hint(body, context, "Empty. Select bones and use Add Selected in the Bones panel.")
+    for entry in grp.bones:
+        pb = rig.pose.bones.get(entry.bone_name)
+        if not pb:
+            # Bone was deleted or renamed outside of Bonemancer
+            row = body.row(align=True)
+            row.label(text=f"{entry.bone_name} (missing)", icon='ERROR')
+            rem = row.operator("bonemancer.remove_bone_from_set", text="", icon='X', emboss=False)
+            rem.set_name = grp.name
+            rem.bone_name = entry.bone_name
+            continue
+        draw_set_bone(context, body, rig, grp, entry, pb)
+
+
+def bone_name_button(layout, name, selected):
+    """A left-aligned bone name that selects the bone; drawn pressed while the bone is selected."""
+    sub = layout.row(align=True)
+    sub.alignment = 'LEFT'
+    op = sub.operator("bonemancer.select_bone", text=name, icon='BONE_DATA', emboss=selected, depress=selected)
+    op.bone_name = name
+
+
+def draw_set_bone(context, layout, rig, grp, entry, pb):
+    path = (grp.name, entry.bone_name)
+    header, body = sub_panel(layout, rig, entry, "show_details", *path)
+    bone_name_button(header, entry.bone_name, bone_is_selected(pb))
+    hidden = is_hidden(pb)
+    eye = header.row(align=True)
+    eye.alignment = 'RIGHT'
+    op = eye.operator("bonemancer.toggle_bone", text="", icon='HIDE_ON' if hidden else 'HIDE_OFF', emboss=False)
+    op.bone_name = entry.bone_name
+    if body is None:
+        return
+
+    row = body.row(align=True)
+    row.operator("bonemancer.rename_bone", text="Rename", icon='GREASEPENCIL').bone_name = entry.bone_name
+    rem = row.operator("bonemancer.remove_bone_from_set", text="Remove from Set", icon='REMOVE')
+    rem.set_name = grp.name
+    rem.bone_name = entry.bone_name
+
+    keys = [key for key in pb.keys() if key != 'constraint_active_index']
+    header, props = sub_panel(body, rig, entry, "show_custom_props", *path)
+    header.label(text=f"Properties ({len(keys)})")
+    if props:
+        draw_custom_props(props.column(), pb, keys, entry.bone_name)
+
+    broken = sum(1 for con in pb.constraints if constraint_problem(con))
+    header, cons = sub_panel(body, rig, entry, "show_constraints", *path)
+    header.label(text=f"Constraints ({len(pb.constraints)}" + (f", {broken} broken)" if broken else ")"),
+                 icon='ERROR' if broken else 'NONE')
+    if cons:
+        if not pb.constraints:
+            hint(cons, context, "This bone has no constraints.")
+        else:
+            cons.template_list(
+                "BONEMANCER_UL_constraints", "",
+                pb, "constraints",
+                entry, "constraint_index",
+                rows=3,
+            )
+
+
+def draw_custom_props(col, pb, keys, bone_name):
+    # Live-draw every custom property in its native widget
+    for key in keys:
+        val = pb[key]
+        # Nested groups have no single widget
+        if hasattr(val, "keys"):
+            col.label(text=f"{key} (property group)")
+            continue
+        # Arrays: one field per item
+        if isinstance(val, (list, tuple)):
+            col.label(text=key)
+            row = col.row(align=True)
+            for i in range(len(val)):
+                row.prop(pb, f'{path_key(key)}[{i}]', text=str(i))
+            continue
+        # Everything else: let Blender pick the widget
+        col.prop(pb, path_key(key), text=key)
+    col.operator("bonemancer.add_custom_prop", text="Add Property", icon='ADD').bone_name = bone_name
 
 class BONEMANCER_UL_constraints(bpy.types.UIList):
     """Scrollable list of constraints with influence sliders + warning button"""
@@ -1637,36 +1648,12 @@ class BONEMANCER_OT_show_constraint_error(bpy.types.Operator):
 class BONEMANCER_UL_bone_picker(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon,
                   active_data, active_propname, index):
-        row = layout.row(align=True)
         rig = get_rig(context.scene)
         if rig and bone_selected_in_viewport(rig, item.name):
-            # Selected in the viewport: drawn pressed, like the Bone Sets select button
-            op = row.operator("bonemancer.select_bone", text=item.name, icon='BONE_DATA', depress=True)
-            op.bone_name = item.name
+            # Selected in the viewport: drawn pressed, like the Bone Sets names
+            bone_name_button(layout, item.name, True)
         else:
-            row.label(text=item.name, icon='BONE_DATA')
-        row.separator(factor=1.0)
-
-        # Add to Collection
-        op = row.operator(
-            "bonemancer.add_bone_to_set",
-            text="",
-            icon='ADD'
-        )
-        op.bone_name = item.name
-
-        op = row.operator(
-            "bonemancer.rename_bone",                 #     Operator to execute
-            text="",                                  #     No text—just an icon
-            icon='FILE_TEXT'                               #     Info icon for “relations”
-        )
-        op.bone_name = item.name
-        op = row.operator(
-            "bonemancer.show_bone_relations",                 #     Operator to execute
-            text="",                                  #     No text—just an icon
-            icon='INFO'                               #     Info icon for “relations”
-        )
-        op.bone_name = item.name
+            layout.label(text=item.name, icon='BONE_DATA')
 
 
 # --- Rig Check -----------------------------------------------------------
@@ -2162,7 +2149,8 @@ def select_object_in_viewport(context, obj):
 class BONEMANCER_OT_check_rig(bpy.types.Operator):
     bl_idname = "bonemancer.check_rig"
     bl_label = "Check Rig"
-    bl_description = "List problems with the picked rig. Nothing in the rig is changed"
+    bl_description = ("List problems with the picked rig. Nothing in the rig is changed. "
+                      "Check again after fixing things to update the list")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -2269,57 +2257,16 @@ class BONEMANCER_OT_unignore_issue(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class BONEMANCER_OT_explain_issue(bpy.types.Operator):
-    bl_idname = "bonemancer.explain_issue"
-    bl_label = "Explain"
-    bl_description = "Why this matters and how to fix it"
-    bl_options = {'INTERNAL'}
-    index: IntProperty()
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=420)
-
-    def draw(self, context):
-        layout = self.layout
-        issue = get_issue(context.scene, self.index)
-        if not issue or issue.check not in RIG_CHECKS:
-            layout.label(text="Check the rig again", icon='INFO')
-            return
-        heading, icon, lines = RIG_CHECKS[issue.check]
-        layout.label(text=issue.message, icon=icon)
-        layout.separator()
-        col = layout.column(align=True)
-        for line in lines:
-            col.label(text=line)
-
-    def execute(self, context):
-        return {'FINISHED'}
-
-
 class BONEMANCER_UL_rig_issues(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         rig = get_rig(context.scene)
-        ignored = is_ignored(rig, item)
         fixed = issue_fixed(context, item)
         row = layout.row(align=True)
-        check_icon = RIG_CHECKS.get(item.check, ("", 'ERROR', ()))[1]
-        label = row.row(align=True)
-        label.active = not (ignored or fixed)
+        row.active = not (fixed or is_ignored(rig, item))
         if fixed:
-            label.label(text=f"{item.message} (fixed; check again to update)", icon='CHECKMARK')
+            row.label(text=f"{item.message} (fixed)", icon='CHECKMARK')
         else:
-            label.label(text=item.message, icon=check_icon)
-        op = row.operator("bonemancer.select_issue", text="", icon='RESTRICT_SELECT_OFF')
-        op.index = index
-        op = row.operator("bonemancer.explain_issue", text="", icon='INFO')
-        op.index = index
-        toggle = row.row(align=True)
-        toggle.enabled = rig_is_editable(rig) and not (ignored and library_ignore(rig, item))
-        if ignored:
-            op = toggle.operator("bonemancer.unignore_issue", text="", icon='HIDE_ON', depress=True)
-        else:
-            op = toggle.operator("bonemancer.ignore_issue", text="", icon='HIDE_OFF')
-        op.index = index
+            row.label(text=item.message, icon=RIG_CHECKS.get(item.check, ("", 'ERROR', ()))[1])
 
     def filter_items(self, context, data, propname):
         issues = getattr(data, propname)
@@ -2332,6 +2279,35 @@ class BONEMANCER_UL_rig_issues(bpy.types.UIList):
             rig = get_rig(context.scene)
             flags = [0 if is_ignored(rig, issue) else flag for flag, issue in zip(flags, issues)]
         return flags, []
+
+
+def issue_explanation(issue):
+    """(heading, icon, why, fix) for an issue; fix is "" when the check has none."""
+    heading, icon, lines = RIG_CHECKS.get(issue.check, ("Issue", 'ERROR', ()))
+    why, _, fix = " ".join(lines).partition(" Fix: ")
+    return heading, icon, why, fix
+
+
+def draw_issue_details(layout, context, rig, issue, index):
+    """Why the highlighted issue matters, how to fix it, and what to do with it."""
+    heading, icon, why, fix = issue_explanation(issue)
+    layout.label(text=heading, icon=icon)
+    # The list row is often cut short in the sidebar; show it in full here
+    wrapped_label(layout, context, issue.message)
+    if issue_fixed(context, issue):
+        wrapped_label(layout, context, "This looks fixed now. Check again to update the list.", 'CHECKMARK')
+    hint(layout, context, why)
+    if fix:
+        wrapped_label(layout, context, "Fix: " + fix)
+    row = layout.row(align=True)
+    row.operator("bonemancer.select_issue", text="Select", icon='RESTRICT_SELECT_OFF').index = index
+    ignored = is_ignored(rig, issue)
+    toggle = row.row(align=True)
+    toggle.enabled = rig_is_editable(rig) and not (ignored and library_ignore(rig, issue))
+    if ignored:
+        toggle.operator("bonemancer.unignore_issue", icon='HIDE_ON').index = index
+    else:
+        toggle.operator("bonemancer.ignore_issue", icon='HIDE_OFF').index = index
 
 
 class BONEMANCER_PT_rig_check(bpy.types.Panel):
@@ -2351,29 +2327,28 @@ class BONEMANCER_PT_rig_check(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        if not get_rig(scene):
-            layout.label(text="Select an armature", icon='ERROR')
+        rig = get_rig(scene)
+        if not rig:
+            hint(layout, context, NO_RIG_HINT)
             return
 
-        layout.operator("bonemancer.check_rig", icon='VIEWZOOM')
         results = scene.bonemancer_rig_check
+        row = layout.row()
+        row.scale_y = 1.3
+        row.operator("bonemancer.check_rig", text="Check Again" if results.has_run else "Check Rig", icon='VIEWZOOM')
         if not results.has_run:
+            hint(layout, context, "Looks for common rigging mistakes, like broken constraints or "
+                                  "bones without weights. Nothing in the rig is changed.")
             return
-        layout.label(text="New problems show up the next time you check", icon='INFO')
         if results.python_drivers:
-            layout.label(
-                text=f"{results.python_drivers} Python driver{'s' if results.python_drivers != 1 else ''} "
-                     "can't be checked while Auto Run Python Scripts is off",
-                icon='SCRIPT')
+            hint(layout, context,
+                 f"{plural(results.python_drivers, 'Python driver')} can't be checked while "
+                 "Auto Run Python Scripts is off.", 'SCRIPT')
 
         issues = visible_issues(scene)
         ignored = len(results.issues) - len(issues)
         if issues:
-            col = layout.column(align=True)
-            for check_id, (heading, icon, _lines) in RIG_CHECKS.items():
-                count = sum(1 for issue in issues if issue.check == check_id)
-                if count:
-                    col.label(text=f"{heading}: {count}", icon=icon)
+            layout.label(text=f"{plural(len(issues), 'issue')} found", icon='ERROR')
         else:
             layout.label(text="No issues found", icon='CHECKMARK')
         if ignored:
@@ -2384,8 +2359,12 @@ class BONEMANCER_PT_rig_check(bpy.types.Panel):
             "BONEMANCER_UL_rig_issues", "",
             results, "issues",
             results, "issues_index",
-            rows=6,
+            rows=5,
         )
+        index = results.issues_index
+        issue = get_issue(scene, index)
+        if issue and (results.show_ignored or not is_ignored(rig, issue)):
+            draw_issue_details(layout.box(), context, rig, issue, index)
 
 
 classes = [
@@ -2410,20 +2389,17 @@ classes = [
     BONEMANCER_OT_remove_bone_from_set,
     BONEMANCER_OT_remove_set,
     BONEMANCER_OT_rename_bone,
-    BONEMANCER_OT_toggle_bone_constraints,
     BONEMANCER_OT_add_custom_prop,
     BONEMANCER_OT_add_bone_to_set,
     BONEMANCER_OT_toggle_set_foldout,
     BONEMANCER_OT_show_bone_relations,
     BONEMANCER_OT_scan_shape_keys,
-    BONEMANCER_OT_toggle_shape_keys,
     BONEMANCER_OT_toggle_shape_keyframe,
     BONEMANCER_OT_show_constraint_error,
     BONEMANCER_OT_check_rig,
     BONEMANCER_OT_select_issue,
     BONEMANCER_OT_ignore_issue,
     BONEMANCER_OT_unignore_issue,
-    BONEMANCER_OT_explain_issue,
     # UILists
     BONEMANCER_UL_constraints,
     BONEMANCER_UL_bone_picker,
@@ -2433,6 +2409,7 @@ classes = [
 
     # Panels
     BONEMANCER_PT_rig,
+    BONEMANCER_PT_bones,
     BONEMANCER_PT_bone_sets,
     BONEMANCER_PT_rig_check,
     BONEMANCER_PT_shape_keys

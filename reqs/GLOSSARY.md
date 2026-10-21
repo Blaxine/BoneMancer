@@ -6,7 +6,7 @@ introduces them, not ad hoc.
 
 | Term | Definition | Notes |
 | ---- | ---------- | ----- |
-| Bone Picker | The list in the sidebar of every bone in the picked rig, with per-row add / rename / relations buttons. | Backed by the scene settings' bone selection list; rebuilt by the depsgraph handler. |
+| Bone Picker | The list in the Bones panel of every bone in the picked rig. Rows are names only; Add Selected, Rename and Relations sit below the list. | Backed by the scene settings' bone selection list; rebuilt by the depsgraph handler. |
 | Bone Set | A named list of bones stored on a rig (`Object.bonemancer_sets`), shown in the Bone Sets panel with hide / select / rename / inspect controls. | Independent of native bone collections; a bone can be in several sets. |
 | Depsgraph handler | The add-on's single `depsgraph_update_post` handler: follows the active armature, rebuilds the Bone Picker, tracks outside renames, mirrors selection, tags redraws. | Skipped during animation playback. |
 | Extension | Blender 4.2+ add-on package format: a folder with `__init__.py` and `blender_manifest.toml`, built into a zip. | Installed module name is `bl_ext.<repo>.<id>`. |
@@ -22,5 +22,5 @@ introduces them, not ad hoc.
 | Reference key | A mesh's base shape key (`Key.reference_key`), whatever its name. | Excluded from the Shape Key Scanner. |
 | Rig | An armature object. | Used interchangeably with "armature" in the UI. |
 | Rig Check | The panel that, on demand, lists **Issues** with the picked rig: broken constraints and drivers, unpaired left/right bones, weight mismatches and setup mistakes. Report-only; it never changes the rig. | Results are cleared when another rig is picked. |
-| Shape Key Scanner | The panel listing shape keys of meshes deformed by the picked rig, with sliders and a keyframe toggle. | "Deformed by" = parented under the rig at any depth, or an Armature modifier targeting it. |
+| Shape Key Scanner | The Shape Keys panel: the meshes deformed by the picked rig, and the highlighted mesh's shape keys with sliders and a keyframe toggle. | "Deformed by" = parented under the rig at any depth, or an Armature modifier targeting it. |
 | Skinned mesh | A mesh deformed by the rig's bones: it has an Armature modifier using the rig, or armature parenting to it. | Stricter than the Shape Key Scanner's "deformed by": bone-parented props are not skinned. Used by the Rig Check weight and driver checks. |
