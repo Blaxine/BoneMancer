@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The add-on's operators (bonemancer.*)."""
+
+from . import bone_sets, bones, constraints, custom_props, rig_check, shape_keys
+
+classes = (
+    bone_sets.BONEMANCER_OT_import_bone_collections,
+    bones.BONEMANCER_OT_select_bone,
+    bones.BONEMANCER_OT_toggle_bone,
+    bone_sets.BONEMANCER_OT_toggle_set,
+    bone_sets.BONEMANCER_OT_remove_bone_from_set,
+    bone_sets.BONEMANCER_OT_remove_set,
+    bones.BONEMANCER_OT_rename_bone,
+    custom_props.BONEMANCER_OT_add_custom_prop,
+    custom_props.BONEMANCER_OT_edit_custom_prop,
+    bone_sets.BONEMANCER_OT_add_bone_to_set,
+    bone_sets.BONEMANCER_OT_toggle_set_foldout,
+    bones.BONEMANCER_OT_show_bone_relations,
+    shape_keys.BONEMANCER_OT_scan_shape_keys,
+    shape_keys.BONEMANCER_OT_toggle_shape_keyframe,
+    constraints.BONEMANCER_OT_show_constraint_error,
+    constraints.BONEMANCER_OT_remove_constraint,
+    rig_check.BONEMANCER_OT_check_rig,
+    rig_check.BONEMANCER_OT_select_issue,
+    rig_check.BONEMANCER_OT_ignore_issue,
+    rig_check.BONEMANCER_OT_unignore_issue,
+)

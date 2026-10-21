@@ -99,7 +99,30 @@ possible a small .blend that shows the problem.
 
 ## Development
 
-The add-on lives in `bonemancer/` (`__init__.py` and `blender_manifest.toml`).
+The add-on is the `bonemancer/` package:
+
+```
+bonemancer/
+├── __init__.py            register() / unregister()
+├── blender_manifest.toml  extension metadata
+├── properties.py          data stored in .blend files (PropertyGroups)
+├── handlers.py            following the viewport; upgrading files on load
+├── core/                  rig logic, no UI
+│   ├── compat.py          Blender 4.x / 5.x differences
+│   ├── utils.py           shared helpers
+│   ├── selection.py       the picked rig, Bone Picker, viewport selection
+│   ├── renaming.py        renames that keep sets and drivers working
+│   ├── shape_keys.py      the Shape Key Scanner
+│   ├── rig_check.py       Rig Check's checks and ignored issues
+│   └── migration.py       upgrading data from older versions
+├── operators/             bonemancer.* operators, one file per area
+└── ui/                    the sidebar: panels.py, lists.py, draw.py, common.py
+```
+
+`core/` never imports from `operators/` or `ui/`. A new operator or panel is
+added to the `classes` tuple in its folder's `__init__.py`; panels appear in the
+order listed there. See [CHANGELOG.md](CHANGELOG.md) for what changed in each
+version.
 
 Run the automated tests against one or more Blender builds:
 

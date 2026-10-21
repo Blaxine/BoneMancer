@@ -9,6 +9,9 @@ import bpy
 from helpers import check, finish, load_addon, refused, make_arm, clear_data, tmp_dir, record
 
 mod = load_addon()
+from bonemancer.core import rig_check, selection, utils
+from bonemancer.operators import rig_check as rig_check_ops
+from bonemancer.ui import panels
 check("register()", mod.register)
 sc = bpy.context.scene
 work = tmp_dir()
@@ -17,11 +20,7 @@ saved_path = os.path.join(work, "override.blend")
 
 
 def pick(obj):
-    mod._armature_change_from_viewport = True
-    try:
-        sc.bonemancer_rig = obj
-    finally:
-        mod._armature_change_from_viewport = False
+    selection.follow_viewport_rig(sc, obj)
 
 
 def add(bone, group="Legs"):
@@ -81,7 +80,7 @@ def linked_readonly():
     sc.collection.objects.link(linked)
     try:
         pick(linked)
-        got = (mod.rig_is_editable(linked), add("hip"), refused(lambda: bpy.ops.bonemancer.toggle_bone(bone_name="hip")),
+        got = (utils.rig_is_editable(linked), add("hip"), refused(lambda: bpy.ops.bonemancer.toggle_bone(bone_name="hip")),
                refused(lambda: bpy.ops.bonemancer.import_bone_collections()))
     finally:
         pick(None)
@@ -91,7 +90,7 @@ check("linked rig: add to set, hide and import are refused", linked_readonly)
 
 
 def visible(scene=None):
-    return [(i.check, i.bone) for i in mod.visible_issues(scene or bpy.context.scene)]
+    return [(i.check, i.bone) for i in rig_check.visible_issues(scene or bpy.context.scene)]
 
 
 def issue_index(bone):
@@ -110,17 +109,17 @@ def linked_rig_check():
                refusal(lambda: bpy.ops.bonemancer.unignore_issue(index=issue_index("knee"))),
                bpy.ops.bonemancer.select_issue(index=issue_index("hip")),
                len(linked.bonemancer_ignored_issues),
-               mod.BONEMANCER_OT_ignore_issue.description(bpy.context, type("P", (), {"index": 0})()))
+               rig_check_ops.BONEMANCER_OT_ignore_issue.description(bpy.context, type("P", (), {"index": 0})()))
     finally:
         pick(None)
         sc.collection.objects.unlink(linked)
     return (got == ({'FINISHED'}, [("constraint", "hip")], {'CANCELLED'}, {'CANCELLED'}, {'CANCELLED'}, 1,
-                    mod.LINKED_IGNORE_MESSAGE), got)
+                    rig_check.LINKED_IGNORE_MESSAGE), got)
 check("linked rig: checked with library ignores; ignore, stop ignoring and select refused", linked_rig_check)
 
 def set_panels(rig):
     """Which kind of sub-panel the Bone Sets panel uses for rig's sets: panel_prop or panel."""
-    return sorted({d.kind for d in record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context).drawn("panel", "panel_prop")})
+    return sorted({d.kind for d in record(panels.BONEMANCER_PT_bone_sets.draw, bpy.context).drawn("panel", "panel_prop")})
 
 
 def linked_sets_fold():
@@ -146,7 +145,7 @@ def make_override():
     rig = next(o for o in ov.all_objects if o.type == 'ARMATURE')
     bpy.context.view_layer.objects.active = rig
     pick(rig)
-    return (mod.rig_is_editable(rig), rig.name)
+    return (utils.rig_is_editable(rig), rig.name)
 check("override rig is editable", make_override)
 
 check("override rig: Bone Sets fold state is saved on the sets",
@@ -155,7 +154,7 @@ def override_prop_buttons():
     entry = rig.bonemancer_sets["Lib"].bones[0]
     rig.bonemancer_sets["Lib"].show_expanded = entry.show_details = entry.show_custom_props = True
     try:
-        drawn = record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context)
+        drawn = record(panels.BONEMANCER_PT_bone_sets.draw, bpy.context)
     finally:
         rig.bonemancer_sets["Lib"].show_expanded = entry.show_details = entry.show_custom_props = False
     got = ([d.args[0] for d in drawn.drawn("operator") if d.args[0].startswith("wm.properties_")],
@@ -238,11 +237,7 @@ def ignores_after_reload():
     entries = [(e.bone, e.detail) for e in r.bonemancer_ignored_issues]
     bpy.context.view_layer.objects.active = r
     pick_scene = bpy.context.scene
-    mod._armature_change_from_viewport = True
-    try:
-        pick_scene.bonemancer_rig = r
-    finally:
-        mod._armature_change_from_viewport = False
+    selection.follow_viewport_rig(pick_scene, r)
     bpy.ops.bonemancer.check_rig()
     shown = visible(pick_scene)
     r_unignore = refusal(lambda: bpy.ops.bonemancer.unignore_issue(index=issue_index("hip")))
