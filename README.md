@@ -20,12 +20,15 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
 - **Bones.** Every bone of the rig. Click a bone to select it in the viewport;
   bones selected in the viewport are highlighted, and **Add Selected to a Bone
   Set** puts all of them into a new or existing set in one go. **Rename** and
-  **Relations** (parent and children) work on the highlighted bone.
+  **Relations** (parent and children) work on the highlighted bone, and its
+  **Deform** checkbox, **IK Stretch** and **Lock IK** X / Y / Z can be set right
+  there.
 - **Bone Sets.** Named lists of bones stored on the rig, so they travel with it
   when you append or link it. Each set folds open, shows its bone count, and
   can hide/show all its bones or be deleted. Click a bone's name to select it;
   the eye hides it. Open a bone to:
   - rename it or remove it from the set
+  - tick Deform on or off, and set IK Stretch and Lock IK X / Y / Z
   - edit its custom properties in place, or add new ones
   - see its constraints with influence sliders; broken ones are counted in the
     heading and flagged in the list

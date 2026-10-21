@@ -1470,6 +1470,7 @@ class BONEMANCER_PT_bones(bpy.types.Panel):
             row = box.row(align=True)
             row.operator("bonemancer.rename_bone", text="Rename", icon='GREASEPENCIL').bone_name = name
             row.operator("bonemancer.show_bone_relations", text="Relations", icon='ORIENTATION_PARENT').bone_name = name
+            draw_bone_settings(box, rig, name)
 
 
 class BONEMANCER_PT_bone_sets(bpy.types.Panel):
@@ -1525,6 +1526,35 @@ def draw_bone_set(context, layout, rig, grp):
         draw_set_bone(context, body, rig, grp, entry, pb)
 
 
+def settings_bone(rig, name):
+    """The bone whose Deform option the panels edit: the edit bone in Edit Mode,
+    where changes to the plain bone would be lost on leaving it."""
+    bones = rig.data.edit_bones if rig.mode == 'EDIT' else rig.data.bones
+    return bones.get(name)
+
+
+def draw_bone_settings(layout, rig, name):
+    """Deform, IK Stretch and Lock IK for one bone, bound to Blender's own properties."""
+    col = layout.column()
+    col.use_property_split = True
+    col.use_property_decorate = False
+    bone = settings_bone(rig, name)
+    if bone:
+        col.prop(bone, "use_deform", text="Deform")
+    pb = rig.pose.bones.get(name)
+    if pb:
+        col.prop(pb, "ik_stretch", text="IK Stretch", slider=True)
+        # Property split only labels checkboxes, so lay out the label column by hand
+        split = col.split(factor=0.4, align=True)
+        label = split.row()
+        label.alignment = 'RIGHT'
+        label.label(text="Lock IK")
+        row = split.row(align=True)
+        row.use_property_split = False
+        for axis in "xyz":
+            row.prop(pb, f"lock_ik_{axis}", text=axis.upper(), toggle=True)
+
+
 def bone_name_button(layout, name, selected):
     """A left-aligned bone name that selects the bone; drawn pressed while the bone is selected."""
     sub = layout.row(align=True)
@@ -1550,6 +1580,7 @@ def draw_set_bone(context, layout, rig, grp, entry, pb):
     rem = row.operator("bonemancer.remove_bone_from_set", text="Remove from Set", icon='REMOVE')
     rem.set_name = grp.name
     rem.bone_name = entry.bone_name
+    draw_bone_settings(body, rig, entry.bone_name)
 
     keys = [key for key in pb.keys() if key != 'constraint_active_index']
     header, props = sub_panel(body, rig, entry, "show_custom_props", *path)

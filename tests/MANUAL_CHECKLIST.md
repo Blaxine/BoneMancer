@@ -51,6 +51,10 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
       and is disabled.
 - [ ] Under the list, the highlighted bone's name is shown with **Rename** and
       **Relations**; Relations shows parent and children.
+- [ ] **Deform**, **IK Stretch** and **Lock IK** X / Y / Z under the list match
+      the Bone Properties editor for the highlighted bone, and changing them
+      here changes them there (and the other way round). In Edit Mode, untick
+      Deform, go back to Pose Mode: it stays off. Ctrl+Z undoes each change.
 - [ ] Rename: each mode (Exact / Prefix / Suffix / Replace) updates the preview
       live; the driver and constraint counts look right; an existing name shows
       an error in the preview and OK does nothing.
@@ -73,6 +77,7 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
 - [ ] Per bone: clicking the name selects the bone, and the name is drawn
       pressed while the bone is selected in the viewport; the eye hides it.
       Opening the bone shows **Rename** and **Remove from Set** (both work),
+      the same Deform / IK Stretch / Lock IK controls,
       **Properties (n)** (editable in place; **Add Property** works) and
       **Constraints (n)** with influence sliders. A constraint with a missing
       target adds ", 1 broken" and a warning icon to the heading, and a warning

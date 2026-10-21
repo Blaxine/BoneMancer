@@ -781,6 +781,46 @@ def ui8():
 check("UI8 Rig panel guides you until a rig is picked, then stays quiet", ui8)
 
 
+def settings_props(drawn):
+    """(property, owner type, bone name) for the Deform and IK controls drawn."""
+    wanted = ("use_deform", "ik_stretch", "lock_ik_x", "lock_ik_y", "lock_ik_z")
+    return [(d.args[1], type(d.args[0]).__name__, d.args[0].name) for d in drawn.drawn("prop") if d.args[1] in wanted]
+
+
+def ui9():
+    reset(); arm = make_arm("Rig", ("a", "b")); pick(arm, from_viewport=False)
+    select_in_pose(arm, ("b",))
+    arm.data.bones.active = arm.data.bones["b"]
+    handler_run()
+    bones = settings_props(record(mod.BONEMANCER_PT_bones.draw, bpy.context))
+    add("a", "Arms")
+    arm.bonemancer_sets["Arms"].show_expanded = True
+    closed = settings_props(record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context))
+    arm.bonemancer_sets["Arms"].bones[0].show_details = True
+    opened = settings_props(record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context))
+    bpy.ops.object.mode_set(mode='OBJECT')
+    expect = lambda name: [("use_deform", "Bone", name), ("ik_stretch", "PoseBone", name), ("lock_ik_x", "PoseBone", name),
+                           ("lock_ik_y", "PoseBone", name), ("lock_ik_z", "PoseBone", name)]
+    got = (bones, closed, opened)
+    return (got == (expect("b"), [], expect("a")), got)
+check("UI9 Deform, IK Stretch and Lock IK show for the highlighted bone and in an opened set bone", ui9)
+
+
+def ui10():
+    reset(); arm = make_arm("Rig", ("a",)); pick(arm, from_viewport=False)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode='EDIT')
+    target = mod.settings_bone(arm, "a")
+    kind = type(target).__name__
+    target.use_deform = False                        # what unticking the box in Edit Mode does
+    bpy.ops.object.mode_set(mode='OBJECT')
+    pb = arm.pose.bones["a"]
+    pb.ik_stretch, pb.lock_ik_y = 0.25, True         # pose bone settings need no mode
+    got = (kind, arm.data.bones["a"].use_deform, round(pb.ik_stretch, 3), pb.lock_ik_y, type(mod.settings_bone(arm, "a")).__name__)
+    return (got == ("EditBone", False, 0.25, True, "Bone"), got)
+check("UI10 Deform edits the edit bone in Edit Mode, so unticking it survives leaving Edit Mode", ui10)
+
+
 def registered_props():
     return sorted(p for p in dir(bpy.types.Scene) + dir(bpy.types.Object) if p.startswith(("rmv2_", "bonemancer_")))
 
