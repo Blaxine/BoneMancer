@@ -89,6 +89,13 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
       **Constraints (n)** with influence sliders. A constraint with a missing
       target adds ", 1 broken" and a warning icon to the heading, and a warning
       button (with details) in its row.
+- [ ] Click a constraint: below the list, its target (with a Bone field for an
+      armature target, Vertex Group for a mesh), Pole Target on IK, each
+      target and weight on an Armature constraint, and Target / Owner Space
+      (Owner only on Limit constraints; Space Object when either is Custom)
+      match the Bone Constraints tab, and changing them here changes them
+      there. Setting a missing target clears its warning and Rig Check marks
+      it fixed. The X on a row removes that constraint; Ctrl+Z restores it.
 - [ ] Sets, bones, Properties and Constraints stay open or closed after save /
       reopen.
 - [ ] Delete a bone in Edit Mode: its row shows "(missing)" with a remove
@@ -147,7 +154,9 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
       editable; bone rename and Add Property are refused with a message, and
       bone properties show no gear or X.
       Deleting a set that came from the library file, or removing one of its
-      original bones, shows an error and changes nothing.
+      original bones, shows an error and changes nothing. The X on a
+      constraint from the library file shows an error; on one added on the
+      override it removes it.
 - [ ] Delete the picked rig with X, save, reopen: the rig is gone (not kept
       by Bone Mancer) and the panel shows no rig.
 - [ ] Uninstall the extension; Blender keeps working and the file still opens.

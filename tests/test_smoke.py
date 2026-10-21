@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+import types
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -902,6 +903,65 @@ def ui12():
            bpy.ops.bonemancer.edit_custom_prop(bone_name="a", prop_name="nope"))
     return (got == (True, False, [{'FINISHED'}] * 4, (0.0, 1.0), 2**31 - 1, 0.5, {'CANCELLED'}), got)
 check("UI12 Edit Property makes a script-made float safe to switch to Integer, and leaves real ranges alone", ui12)
+
+
+def settings_drawn(con):
+    """(property, text) for everything draw_constraint_settings binds, in order."""
+    drawn = record(lambda self, ctx: mod.draw_constraint_settings(self.layout, con), bpy.context)
+    return [(d.args[1], d.text) for d in drawn.drawn("prop", "prop_search")]
+
+
+def ui13():
+    reset(); arm = make_arm("Rig", ("a", "b")); pick(arm, from_viewport=False)
+    pb = arm.pose.bones["a"]
+    copy = pb.constraints.new('COPY_ROTATION')
+    copy.target, copy.subtarget = arm, "b"
+    limit = pb.constraints.new('LIMIT_ROTATION')
+    ik = pb.constraints.new('IK')
+    ik.target = arm
+    child = pb.constraints.new('CHILD_OF')
+    armature = pb.constraints.new('ARMATURE')
+    armature.targets.new().target = arm
+    custom = pb.constraints.new('COPY_LOCATION')
+    custom.owner_space = 'CUSTOM'
+    types_ok = set(mod.CONSTRAINT_SPACES) <= {i.identifier for i in bpy.types.Constraint.bl_rna.properties["type"].enum_items}
+    got = {c.type + ("+custom" if c == custom else ""): [p for p, _t in settings_drawn(c)]
+           for c in (copy, limit, ik, child, armature, custom)}
+    want = {
+        "COPY_ROTATION": ["target", "subtarget", "target_space", "owner_space"],
+        "LIMIT_ROTATION": ["owner_space"],
+        "IK": ["target", "subtarget", "pole_target"],
+        "CHILD_OF": ["target"],
+        "ARMATURE": ["target", "subtarget", "weight"],
+        "COPY_LOCATION+custom": ["target", "target_space", "owner_space", "space_object"],
+    }
+    return (types_ok and got == want, (types_ok, got))
+check("UI13 constraint settings show target, bone, pole and spaces only where the constraint has them", ui13)
+
+
+def ui14():
+    reset(); arm = make_arm("Rig", ("a", "b")); pick(arm, from_viewport=False)
+    pb = arm.pose.bones["a"]
+    pb.constraints.new('COPY_ROTATION')
+    pb.constraints.new('LIMIT_LOCATION')
+    add("a", "Arms")
+    entry = arm.bonemancer_sets["Arms"].bones[0]
+    arm.bonemancer_sets["Arms"].show_expanded = entry.show_details = entry.show_constraints = True
+    entry.constraint_index = 1
+    panel = record(mod.BONEMANCER_PT_bone_sets.draw, bpy.context)
+    settings_for = [d.args[0].name for d in panel.drawn("prop") if len(d.args) > 1 and d.args[1] == "owner_space"]
+    rows = []
+    for i, con in enumerate(pb.constraints):
+        row = record(lambda self, ctx: mod.BONEMANCER_UL_constraints.draw_item(
+            types.SimpleNamespace(layout_type='DEFAULT'), ctx, self.layout, pb, con, 0, None, "", i), bpy.context)
+        rows += [(d.result.attrs["bone_name"], d.result.attrs["constraint_name"])
+                 for d in row.drawn("operator") if d.args[0] == "bonemancer.remove_constraint"]
+    removed = bpy.ops.bonemancer.remove_constraint(bone_name="a", constraint_name="Copy Rotation")
+    missing = bpy.ops.bonemancer.remove_constraint(bone_name="a", constraint_name="Nope")
+    got = (settings_for, rows, removed, missing, [c.name for c in pb.constraints])
+    return (got == (["Limit Location"], [("a", "Copy Rotation"), ("a", "Limit Location")], {'FINISHED'}, {'CANCELLED'},
+                    ["Limit Location"]), got)
+check("UI14 each constraint row can be removed; the highlighted one's settings show below the list", ui14)
 
 
 def registered_props():

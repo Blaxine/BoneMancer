@@ -34,7 +34,10 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
     change one's name, type, range, default or description (Blender's own Edit
     Property dialog) and the X to remove it
   - see its constraints with influence sliders; broken ones are counted in the
-    heading and flagged in the list
+    heading and flagged in the list. Click one to set its target (object and
+    bone or vertex group, pole target, or each target of an Armature
+    constraint) and its target and owner spaces, where it has them; the X
+    removes it
   - bones deleted or renamed outside Bone Mancer are flagged, and renames done
     elsewhere (F2, Outliner, batch rename) are followed
 - **Import Bone Collections.** Turn the rig's existing bone collections into

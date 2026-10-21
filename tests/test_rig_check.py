@@ -196,7 +196,7 @@ def constraint_list_warning():
     rig = fresh()
     con = rig.pose.bones["spine"].constraints.new('COPY_ROTATION')
     mod.BONEMANCER_UL_constraints.draw_item(types.SimpleNamespace(layout_type='DEFAULT'), bpy.context, MockLayout(),
-                                            None, con, 0, None, "", 0)
+                                            rig.pose.bones["spine"], con, 0, None, "", 0)
     return (mod.constraint_problem(con) == "has no target", mod.constraint_problem(con))
 check("the Bone Sets constraint list uses the same wording", constraint_list_warning)
 

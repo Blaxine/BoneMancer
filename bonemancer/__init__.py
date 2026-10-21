@@ -1658,6 +1658,9 @@ def draw_set_bone(context, layout, rig, grp, entry, pb):
                 entry, "constraint_index",
                 rows=3,
             )
+            # Target and spaces of the highlighted constraint
+            if 0 <= entry.constraint_index < len(pb.constraints):
+                draw_constraint_settings(cons.box(), pb.constraints[entry.constraint_index])
 
 
 def pose_bone_path(bone_name):
@@ -1691,8 +1694,93 @@ def draw_custom_props(col, rig, pb, keys):
             op.property_name = key
     col.operator("bonemancer.add_custom_prop", text="Add Property", icon='ADD').bone_name = pb.name
 
+# Which space dropdowns Blender's own constraint panels show, as (target, owner)
+CONSTRAINT_SPACES = {
+    'COPY_LOCATION': (True, True), 'COPY_ROTATION': (True, True), 'COPY_SCALE': (True, True),
+    'COPY_TRANSFORMS': (True, True), 'TRACK_TO': (True, True), 'LIMIT_DISTANCE': (True, True),
+    'FLOOR': (True, True), 'TRANSFORM': (True, True), 'ACTION': (True, False),
+    'LIMIT_LOCATION': (False, True), 'LIMIT_ROTATION': (False, True), 'LIMIT_SCALE': (False, True),
+    'MAINTAIN_VOLUME': (False, True),
+}
+# Constraints whose target takes no bone or vertex group
+NO_SUBTARGET = {'SHRINKWRAP', 'GEOMETRY_ATTRIBUTE'}
+
+
+def subtarget_search(layout, owner, prop, target, text_prefix=""):
+    """A Bone or Vertex Group field for target, as Blender's constraint panels draw it."""
+    if not target:
+        return
+    if target.type == 'ARMATURE':
+        layout.prop_search(owner, prop, target.data, "bones", text=text_prefix + "Bone")
+    elif target.type in {'MESH', 'LATTICE'}:
+        layout.prop_search(owner, prop, target, "vertex_groups", text=text_prefix + "Vertex Group")
+
+
+def draw_constraint_settings(layout, con):
+    """Target, pole target and target/owner spaces of one constraint, where it has them."""
+    col = layout.column()
+    col.use_property_split = True
+    col.use_property_decorate = False
+    col.label(text=con.name, icon='CONSTRAINT')
+    shown = False
+    if hasattr(con, "target"):
+        col.prop(con, "target")
+        if con.type not in NO_SUBTARGET:
+            subtarget_search(col, con, "subtarget", con.target)
+        shown = True
+    if hasattr(con, "pole_target"):
+        col.prop(con, "pole_target")
+        subtarget_search(col, con, "pole_subtarget", con.pole_target, "Pole ")
+        shown = True
+    # The Armature constraint has a list of weighted targets instead
+    for i, tgt in enumerate(getattr(con, "targets", ())):
+        box = col.box()
+        box.prop(tgt, "target", text=f"Target {i + 1}")
+        subtarget_search(box, tgt, "subtarget", tgt.target)
+        box.prop(tgt, "weight", slider=True)
+        shown = True
+    target_space, owner_space = CONSTRAINT_SPACES.get(con.type, (False, False))
+    if target_space:
+        col.prop(con, "target_space", text="Target Space")
+    if owner_space:
+        col.prop(con, "owner_space", text="Owner Space")
+    if (target_space or owner_space) and 'CUSTOM' in (con.target_space, con.owner_space):
+        col.prop(con, "space_object")
+        subtarget_search(col, con, "space_subtarget", con.space_object, "Space ")
+    if not (shown or target_space or owner_space):
+        hint_col = col.column()
+        hint_col.active = False
+        hint_col.label(text="No target or spaces to set")
+
+
+class BONEMANCER_OT_remove_constraint(bpy.types.Operator):
+    """Delete this constraint from the bone"""
+    bl_idname = "bonemancer.remove_constraint"
+    bl_label = "Remove Constraint"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    bone_name: StringProperty()
+    constraint_name: StringProperty()
+
+    def execute(self, context):
+        rig = get_rig(context.scene)
+        pb = rig.pose.bones.get(self.bone_name) if rig else None
+        con = pb.constraints.get(self.constraint_name) if pb else None
+        if not con:
+            return {'CANCELLED'}
+        if not rig_is_editable(rig):
+            self.report({'ERROR'}, "Rig is linked from a library; make a library override first")
+            return {'CANCELLED'}
+        if con.is_override_data:   # it came with the linked rig, not added on the override
+            self.report({'ERROR'}, "This constraint comes from the rig's library file; remove it there")
+            return {'CANCELLED'}
+        pb.constraints.remove(con)
+        tag_addon_panels(context)
+        return {'FINISHED'}
+
+
 class BONEMANCER_UL_constraints(bpy.types.UIList):
-    """Scrollable list of constraints with influence sliders + warning button"""
+    """Scrollable list of constraints with influence sliders, a warning button and Remove"""
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             row = layout.row(align=True)
@@ -1715,6 +1803,11 @@ class BONEMANCER_UL_constraints(bpy.types.UIList):
                 )
                 op.constraint_name = item.name
                 op.error_message = tooltip_text
+
+            # data is the pose bone whose constraints this list shows
+            op = row.operator("bonemancer.remove_constraint", text="", icon='X', emboss=False)
+            op.bone_name = data.name
+            op.constraint_name = item.name
 
         elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
@@ -2496,6 +2589,7 @@ classes = [
     BONEMANCER_OT_scan_shape_keys,
     BONEMANCER_OT_toggle_shape_keyframe,
     BONEMANCER_OT_show_constraint_error,
+    BONEMANCER_OT_remove_constraint,
     BONEMANCER_OT_check_rig,
     BONEMANCER_OT_select_issue,
     BONEMANCER_OT_ignore_issue,

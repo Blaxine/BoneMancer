@@ -162,6 +162,20 @@ def override_prop_buttons():
            any(d.args[1] == '["lib_prop"]' for d in drawn.drawn("prop") if len(d.args) > 1))
     return (got == ([], True), got)
 check("override rig: properties show their values but no Edit/Remove (Blender refuses them)", override_prop_buttons)
+def override_constraints():
+    pb = rig.pose.bones["hip"]
+    local = pb.constraints.new('DAMPED_TRACK')          # added on the override itself
+    local_name = local.name
+    lib_names = [c.name for c in pb.constraints if c.name != local_name]
+    try:
+        got = (refusal(lambda: bpy.ops.bonemancer.remove_constraint(bone_name="hip", constraint_name=lib_names[0])),
+               bpy.ops.bonemancer.remove_constraint(bone_name="hip", constraint_name=local_name),
+               [c.name for c in pb.constraints] == lib_names)
+    finally:
+        if pb.constraints.get(local_name):
+            pb.constraints.remove(pb.constraints[local_name])
+    return (got == ({'CANCELLED'}, {'FINISHED'}, True), got)
+check("override rig: a library constraint can't be removed; one added on the override can", override_constraints)
 check("override rig: add bones to a set", lambda: (add("hip") == add("knee") == {'FINISHED'}, None))
 check("override rig: import bone collections",
       lambda: (bpy.ops.bonemancer.import_bone_collections() == {'FINISHED'}
