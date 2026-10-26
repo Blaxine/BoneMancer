@@ -2,10 +2,10 @@
 """Operators for the Actionable Bones panel."""
 
 import bpy
-from bpy.props import IntProperty, StringProperty
+from bpy.props import BoolProperty, IntProperty, StringProperty
 
-from ..core.layout import active_bone_name, find_tab, place_bone
-from ..core.selection import select_bone_in_viewport
+from ..core.layout import active_bone_name, bone_hidden_in_layout, find_tab, place_bone
+from ..core.selection import select_bone_in_viewport, toggle_bone_in_viewport
 from ..core.utils import get_rig, rig_is_editable, tag_addon_panels
 
 
@@ -14,27 +14,35 @@ class BONEMANCER_OT_pick_bone(bpy.types.Operator):
     bl_label = "Pick Bone"
     # No per-bone description(): with one, Blender stops drawing the button
     # pressed while its bone is selected. The panel names the active bone instead.
-    bl_description = "Select this bone"
+    bl_description = "Select this bone. Shift+click adds it to the selection or removes it"
     bl_options = {'REGISTER', 'UNDO'}
     bone_name: StringProperty()
+    extend: BoolProperty(name="Extend", options={'SKIP_SAVE'})
+
+    def invoke(self, context, event):
+        # Ctrl and Alt are reserved; they act like a plain click for now
+        self.extend = event.shift
+        return self.execute(context)
 
     def execute(self, context):
-        error = select_bone_in_viewport(context, get_rig(context.scene), self.bone_name)
+        rig = get_rig(context.scene)
+        if rig and bone_hidden_in_layout(rig, self.bone_name):
+            self.report({'INFO'}, f"'{self.bone_name}' is hidden")
+            return {'CANCELLED'}
+        select = toggle_bone_in_viewport if self.extend else select_bone_in_viewport
+        error = select(context, rig, self.bone_name)
         if error:
             self.report({'WARNING'}, error)
             return {'CANCELLED'}
         return {'FINISHED'}
 
 
-class BONEMANCER_OT_layout_blank(bpy.types.Operator):
+class InertCell:
     """
-    Fills a cell that has nothing to click. Labels or sub-layouts in the grid
+    A cell button that can't be clicked. Labels or sub-layouts in the grid
     squeeze the real buttons out of shape; a never-enabled button keeps every
-    cell the same width.
+    cell the same width, and draws greyed.
     """
-    bl_idname = "bonemancer.layout_blank"
-    bl_label = "Empty Cell"
-    bl_description = "Empty cell"
     bl_options = {'INTERNAL'}
 
     @classmethod
@@ -43,6 +51,24 @@ class BONEMANCER_OT_layout_blank(bpy.types.Operator):
 
     def execute(self, context):
         return {'CANCELLED'}
+
+
+class BONEMANCER_OT_layout_blank(InertCell, bpy.types.Operator):
+    bl_idname = "bonemancer.layout_blank"
+    bl_label = "Empty Cell"
+    bl_description = "Empty cell"
+
+
+class BONEMANCER_OT_hidden_cell(InertCell, bpy.types.Operator):
+    bl_idname = "bonemancer.hidden_cell"
+    bl_label = "Hidden Bone"
+    bl_description = "This bone is hidden. Show it, or its bone collection, to pick it"
+
+
+class BONEMANCER_OT_missing_cell(InertCell, bpy.types.Operator):
+    bl_idname = "bonemancer.missing_cell"
+    bl_label = "Missing Bone"
+    bl_description = "This cell's bone no longer exists. Turn on Edit Layout to clear it"
 
 
 class BONEMANCER_OT_place_bone(bpy.types.Operator):

@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Drawing of the Actionable Bones layout: tab bar and cell grid."""
 
-from ..core.layout import active_bone_name, active_tab, cells_by_position, layout_tabs
+from ..core.layout import (active_bone_name, active_tab, bone_exists, bone_hidden_in_layout, cells_by_position,
+                           layout_tabs)
 from ..core.selection import bone_selected_in_viewport
 from .common import hint
 
@@ -39,11 +40,21 @@ def draw_grid(layout, rig, tab, editing):
         for column in range(tab.columns):
             cell = cells.get((row, column))
             if cell:
-                selected = bone_selected_in_viewport(rig, cell.bone_name)
-                op = grid.operator("bonemancer.pick_bone", text="", icon=SIDE_ICONS[cell.side], depress=selected)
-                op.bone_name = cell.bone_name
+                draw_cell(grid, rig, cell)
             elif editing:
                 op = grid.operator("bonemancer.place_bone", text="", icon='BLANK1')
                 op.tab, op.row, op.column = tab.name, row, column
             else:
                 grid.operator("bonemancer.layout_blank", text="", icon='BLANK1', emboss=False)
+
+
+def draw_cell(grid, rig, cell):
+    name = cell.bone_name
+    if not bone_exists(rig, name):
+        grid.operator("bonemancer.missing_cell", text="", icon='ERROR')
+    elif bone_hidden_in_layout(rig, name):
+        grid.operator("bonemancer.hidden_cell", text="", icon=SIDE_ICONS[cell.side])
+    else:
+        op = grid.operator("bonemancer.pick_bone", text="", icon=SIDE_ICONS[cell.side],
+                           depress=bone_selected_in_viewport(rig, name))
+        op.bone_name = name

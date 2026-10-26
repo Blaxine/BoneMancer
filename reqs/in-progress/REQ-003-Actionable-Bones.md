@@ -296,11 +296,11 @@ bone renamed with F2 keeps its cell.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S008 | S | Shift toggle | Shift+click toggles the bone without clearing others (pose and armature Edit Mode); added bone becomes active; Ctrl/Alt = plain click. | S004 | `bonemancer/operators/`, `bonemancer/core/selection.py` |
-|  | S009 | S | Hidden for the layout | Rule per *Architectural decisions* (own flag, or collections none effectively visible); pick operators do nothing on hidden bones. | S004 | `bonemancer/core/` |
-|  | S010 | U | Cell states | Pressed for selected, greyed for hidden, `ERROR` for missing. | S008, S009 | `bonemancer/ui/` |
-|  | S011 | S | Rename following | Rewrite cell bone names on every tab beside `rename_set_entries` in `update_bone_list` and `BONEMANCER_OT_rename_bone`. | S001 | `bonemancer/core/selection.py`, `bonemancer/operators/bones.py`, `bonemancer/core/` |
-|  | S012 | T | Extend suite | Shift add/remove, active bone, Ctrl as plain click; hidden by flag, by collection, by hidden parent collection, by a soloed other collection; missing cell; Rename and outside-rename following; undo per pick. | S010, S011 | `tests/test_actionable_bones.py` |
+| ✅ | S008 | S | Shift toggle | Shift+click toggles the bone without clearing others (pose and armature Edit Mode); added bone becomes active; Ctrl/Alt = plain click. | S004 | `bonemancer/operators/`, `bonemancer/core/selection.py` |
+| ✅ | S009 | S | Hidden for the layout | Rule per *Architectural decisions* (own flag, or collections none effectively visible); pick operators do nothing on hidden bones. | S004 | `bonemancer/core/` |
+| ✅ | S010 | U | Cell states | Pressed for selected, greyed for hidden, `ERROR` for missing. | S008, S009 | `bonemancer/ui/` |
+| ✅ | S011 | S | Rename following | Rewrite cell bone names on every tab beside `rename_set_entries` in `update_bone_list` and `BONEMANCER_OT_rename_bone`. | S001 | `bonemancer/core/selection.py`, `bonemancer/operators/bones.py`, `bonemancer/core/` |
+| ✅ | S012 | T | Extend suite | Shift add/remove, active bone, Ctrl as plain click; hidden by flag, by collection, by hidden parent collection, by a soloed other collection; missing cell; Rename and outside-rename following; undo per pick. | S010, S011 | `tests/test_actionable_bones.py` |
 
 ### Slice 3 — Editing the layout
 
@@ -410,9 +410,9 @@ S021 → S032 → S033 → S034
 - [x] **Q1 — SOLVE.** None; `—`. *(Blaxine)*
 - [x] **Q2 — Release.** 1.2.0 after slice 6 with the unreleased sidebar work;
   Face as 1.2.1. *(Blaxine)*
-- [ ] **Q3 — Solo collections.** Does `is_visible_effectively` turn false for
-  collections hidden by another collection's solo, or does the rule need
-  `Armature.is_solo_active` / `is_solo` too? Deferred until S012's solo test.
+- [x] **Q3 — Solo collections — Resolved.** `is_visible_effectively` is false
+  for a collection hidden by another collection's solo on 4.5 and 5.2; the rule
+  needs nothing more. *(Blaxine)*
 - [x] **Q4 — Dim isolated cells — Resolved.** Labels between cells squeezed the
   buttons; empty cells are now disabled buttons (see *Constraints*). *(Blaxine)*
 - [ ] **Q5 — Cell size on Hands / Face.** Whether 20 columns stay clickable at
@@ -494,3 +494,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | ---- | ------ | ----------------- |
 | 2026-10-22 | Blaxine | Initial plan. |
 | 2026-10-26 | Blaxine | Slice 1 implemented. Empty cells are a disabled no-op button (labels squeezed the cell buttons); cell buttons have no per-bone `description()` (it stops `depress` drawing), so the panel names the active bone under the grid instead of a tooltip. Q4 resolved. |
+| 2026-10-26 | Blaxine | Slice 2 implemented. Q3 resolved: solo needs no extra rule. Ctrl/Alt acting as a plain click is not covered by a test (a background run can't send a click event); check it by hand. |

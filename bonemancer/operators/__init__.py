@@ -26,6 +26,8 @@ classes = (
     rig_check.BONEMANCER_OT_unignore_issue,
     layout.BONEMANCER_OT_pick_bone,
     layout.BONEMANCER_OT_layout_blank,
+    layout.BONEMANCER_OT_hidden_cell,
+    layout.BONEMANCER_OT_missing_cell,
     layout.BONEMANCER_OT_place_bone,
     layout.BONEMANCER_OT_new_layout_tab,
     layout.BONEMANCER_OT_show_layout_tab,

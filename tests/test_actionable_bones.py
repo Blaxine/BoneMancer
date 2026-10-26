@@ -9,6 +9,7 @@ import bpy
 from helpers import check, finish, load_addon, refused, make_arm, clear_data, tmp_dir, record
 
 mod = load_addon()
+from bonemancer import handlers
 from bonemancer.core import compat, layout, selection
 from bonemancer.ui import panels
 check("register()", mod.register)
@@ -161,6 +162,118 @@ def active_named():
     op("pick_bone", bone_name="arm.L")
     return ("arm.L" in draw().texts("label"), draw().texts("label"))
 check("the panel names the active bone under the grid", active_named)
+
+
+def shift_toggles():
+    rig = fresh()
+    new_tab()
+    op("pick_bone", bone_name="arm.L")
+    added = (op("pick_bone", bone_name="spine", extend=True), selected(rig), rig.data.bones.active.name)
+    removed = (op("pick_bone", bone_name="arm.L", extend=True), selected(rig))
+    plain = (op("pick_bone", bone_name="hand.R"), selected(rig))
+    got = (added, removed, plain)
+    return (got == (({'FINISHED'}, ["arm.L", "spine"], "spine"), ({'FINISHED'}, ["spine"]),
+                    ({'FINISHED'}, ["hand.R"])), got)
+check("Shift+click adds a bone to the selection or removes it; a plain click replaces it", shift_toggles)
+
+
+def shift_in_edit_mode():
+    rig = fresh()
+    bpy.ops.object.mode_set(mode='EDIT')
+    for eb in rig.data.edit_bones:
+        eb.select = eb.select_head = eb.select_tail = eb.name == "root"
+    got = (op("pick_bone", bone_name="spine", extend=True), rig.mode,
+           sorted(eb.name for eb in rig.data.edit_bones if eb.select), rig.data.edit_bones.active.name)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return (got == ({'FINISHED'}, 'EDIT', ["root", "spine"], "spine"), got)
+check("Shift+click in armature Edit Mode toggles edit bones and stays in Edit Mode", shift_in_edit_mode)
+
+
+def pick_is_undoable():
+    return ('UNDO' in bpy.types.BONEMANCER_OT_pick_bone.bl_options, None)
+check("picking from a cell is one undo step", pick_is_undoable)
+
+
+def hidden_rig(how):
+    """A rig with arm.L placed and hidden the given way; returns the rig."""
+    rig = fresh()
+    new_tab()
+    place("arm.L", 3, 2)
+    coll = rig.data.collections.new("Arms")
+    coll.assign(rig.data.bones["arm.L"])
+    if how == "flag":
+        compat.set_hidden(rig.pose.bones["arm.L"], True)
+    elif how == "collection":
+        coll.is_visible = False
+    elif how == "parent":
+        parent = rig.data.collections.new("Limbs")
+        coll.parent = parent
+        parent.is_visible = False
+    elif how == "solo":
+        other = rig.data.collections.new("Torso")
+        other.assign(rig.data.bones["spine"])
+        other.is_solo = True
+    return rig
+
+
+def hidden_cells():
+    got = {}
+    for how in ("flag", "collection", "parent", "solo"):
+        rig = hidden_rig(how)
+        bpy.ops.object.mode_set(mode='POSE')
+        for pb in rig.pose.bones:
+            compat.set_bone_selected(pb, False)
+        drawn = [d.args[0] for d in draw().drawn("operator") if d.args[0].endswith(("pick_bone", "hidden_cell"))]
+        got[how] = (op("pick_bone", bone_name="arm.L"), op("pick_bone", bone_name="arm.L", extend=True),
+                    selected(rig), drawn)
+        bpy.ops.object.mode_set(mode='OBJECT')
+    want = ({'CANCELLED'}, {'CANCELLED'}, [], ["bonemancer.hidden_cell"])
+    return (all(g == want for g in got.values()), got)
+check("a bone hidden by its flag, its collection, a parent collection or another collection's solo draws "
+      "greyed and can't be picked", hidden_cells)
+
+
+def visible_in_one_collection():
+    rig = hidden_rig("collection")
+    rig.data.collections.new("Shown").assign(rig.data.bones["arm.L"])
+    return (op("pick_bone", bone_name="arm.L") == {'FINISHED'}, None)
+check("a bone in a hidden and a visible collection can still be picked", visible_in_one_collection)
+
+
+def missing_cell():
+    rig = fresh()
+    new_tab()
+    place("arm.L", 3, 2)
+    bpy.ops.object.mode_set(mode='EDIT')
+    rig.data.edit_bones.remove(rig.data.edit_bones["arm.L"])
+    bpy.ops.object.mode_set(mode='OBJECT')
+    ops = [d for d in draw().drawn("operator") if d.args[0] == "bonemancer.missing_cell"]
+    got = (len(ops), ops[0].kwargs.get("icon") if ops else None, cells(rig))
+    return (got == (1, 'ERROR', [("arm.L", 3, 2, 'LEFT')]), got)
+check("a cell whose bone was deleted draws a warning and keeps its name", missing_cell)
+
+
+def follows_rename_operator():
+    rig = fresh()
+    new_tab()
+    new_tab(name="Hands")
+    place("arm.L", 3, 2)
+    place("arm.L", 0, 0, tab="Hands")
+    bpy.ops.bonemancer.rename_bone(bone_name="arm.L", mode='EXACT', new_name="upper_arm.L")
+    got = (cells(rig), cells(rig, "Hands"))
+    return (got == ([("upper_arm.L", 3, 2, 'LEFT')], [("upper_arm.L", 0, 0, 'LEFT')]), got)
+check("cells on every tab follow a bone renamed with Rename", follows_rename_operator)
+
+
+def follows_outside_rename():
+    rig = fresh()
+    new_tab()
+    place("spine", 1, 1)
+    selection.update_bone_list(sc)                   # the Bone Picker knows the current names
+    rig.data.bones["spine"].name = "chest"           # F2 / Outliner rename
+    handlers.on_depsgraph_update(sc, bpy.context.evaluated_depsgraph_get())
+    return (cells(rig) == [("chest", 1, 1, 'CENTER')], cells(rig))
+check("cells follow an outside rename", follows_outside_rename)
 
 
 # ---------------------------------------------------------------- drawing

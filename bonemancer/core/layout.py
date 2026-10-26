@@ -8,6 +8,8 @@ at most once on a tab, but may sit on several tabs. Cells store names only.
 
 import bpy
 
+from .compat import is_hidden
+
 
 def layout_tabs(arm_obj):
     return arm_obj.bonemancer_layout if arm_obj else ()
@@ -49,6 +51,45 @@ def side_from_name(name):
     # The first character that changes is the side marker's: L/l or R/r
     i = next(i for i, (a, b) in enumerate(zip(name, flipped)) if a != b)
     return 'LEFT' if name[i] in "Ll" else 'RIGHT'
+
+
+def layout_is_editable(arm_obj):
+    """Only a rig in its own file: on an override the layout comes from the library file."""
+    return arm_obj is not None and arm_obj.library is None and arm_obj.override_library is None
+
+
+def bone_hidden_in_layout(arm_obj, bone_name):
+    """
+    True if the bone is hidden in the viewport: its own Hide flag, or it is in
+    bone collections and none of them is visible (their parents included).
+    """
+    if arm_obj.mode == 'EDIT':
+        bone = arm_obj.data.edit_bones.get(bone_name)
+        if bone is None:
+            return False
+        hidden = bone.hide
+    else:
+        bone = arm_obj.data.bones.get(bone_name)
+        if bone is None:
+            return False
+        hidden = is_hidden(arm_obj.pose.bones.get(bone_name))
+    collections = bone.collections
+    return hidden or (len(collections) > 0 and not any(c.is_visible_effectively for c in collections))
+
+
+def bone_exists(arm_obj, bone_name):
+    bones = arm_obj.data.edit_bones if arm_obj.mode == 'EDIT' else arm_obj.data.bones
+    return bones.get(bone_name) is not None
+
+
+def rename_layout_cells(arm_obj, old_name, new_name):
+    """Follow a bone rename on every tab of the rig's own layout."""
+    if not layout_is_editable(arm_obj):
+        return
+    for tab in arm_obj.bonemancer_layout:
+        for cell in tab.cells:
+            if cell.bone_name == old_name:
+                cell.bone_name = new_name
 
 
 def place_bone(tab, row, column, bone_name):

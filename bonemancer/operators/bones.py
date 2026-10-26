@@ -5,6 +5,7 @@ import bpy
 from bpy.props import StringProperty, IntProperty, EnumProperty
 
 from ..core.compat import toggle_hidden
+from ..core.layout import rename_layout_cells
 from ..core.renaming import count_bone_references, rename_set_entries, update_driver_variable_paths
 from ..core.rig_check import rename_ignore_entries
 from ..core.selection import armature_bone_names, select_bone_in_viewport, update_bone_list
@@ -257,6 +258,7 @@ class BONEMANCER_OT_rename_bone(bpy.types.Operator):
         # 3) Update group entries, driver variables on this rig, and the picker
         rename_set_entries(arm_obj, self.bone_name, new_name)
         rename_ignore_entries(arm_obj, self.bone_name, new_name)
+        rename_layout_cells(arm_obj, self.bone_name, new_name)
         update_driver_variable_paths(arm_obj, self.bone_name, new_name)
         update_bone_list(context.scene)
         arm_obj.update_tag()

@@ -4,6 +4,7 @@
 import bpy
 
 from .compat import bone_is_selected, is_hidden, set_bone_selected, set_hidden
+from .layout import rename_layout_cells
 from .renaming import rename_set_entries
 from .rig_check import clear_rig_check, rename_ignore_entries
 from .shape_keys import scan_shape_keys_for_armature
@@ -46,6 +47,7 @@ def update_bone_list(scene):
             if old_name != new_name and old_name not in new_set and new_name not in old_set:
                 rename_set_entries(arm_obj, old_name, new_name)
                 rename_ignore_entries(arm_obj, old_name, new_name)
+                rename_layout_cells(arm_obj, old_name, new_name)
 
     settings.bone_selection.clear()
     for name in names:
@@ -165,6 +167,17 @@ def select_bone_in_viewport(context, obj, bone_name):
     if not pb:
         return f"Bone '{bone_name}' not found"
 
+    enter_pose_mode(context, obj)
+    for p in obj.pose.bones:
+        set_bone_selected(p, False)
+    set_hidden(pb, False)
+    set_bone_selected(pb, True)
+    obj.data.bones.active = pb.bone
+    return ""
+
+
+def enter_pose_mode(context, obj):
+    """Show obj and make it the active object in Pose Mode, unless it already is."""
     obj.hide_set(False)
     obj.hide_viewport = False
     if not (obj.mode == 'POSE' and context.view_layer.objects.active == obj):
@@ -174,11 +187,38 @@ def select_bone_in_viewport(context, obj, bone_name):
         obj.select_set(True)
         bpy.ops.object.mode_set(mode='POSE')
 
-    for p in obj.pose.bones:
-        set_bone_selected(p, False)
-    set_hidden(pb, False)
-    set_bone_selected(pb, True)
-    obj.data.bones.active = pb.bone
+
+def toggle_bone_in_viewport(context, obj, bone_name):
+    """
+    Add bone_name to obj's bone selection, or remove it, keeping the rest; an
+    added bone becomes active. Unlike select_bone_in_viewport it never unhides
+    the bone. Returns an error message, or '' on success.
+    """
+    if not obj:
+        return "No valid armature"
+    if context.view_layer.objects.get(obj.name) != obj:
+        return f"'{obj.name}' is not in the current view layer"
+    if not rig_is_editable(obj):
+        return "Rig is linked from a library; make a library override first"
+
+    if obj.mode == 'EDIT':
+        eb = obj.data.edit_bones.get(bone_name)
+        if not eb:
+            return f"Bone '{bone_name}' not found"
+        add = not eb.select
+        eb.select = eb.select_head = eb.select_tail = add
+        if add:
+            obj.data.edit_bones.active = eb
+        return ""
+
+    pb = obj.pose.bones.get(bone_name)
+    if not pb:
+        return f"Bone '{bone_name}' not found"
+    enter_pose_mode(context, obj)
+    add = not bone_is_selected(pb)
+    set_bone_selected(pb, add)
+    if add:
+        obj.data.bones.active = pb.bone
     return ""
 
 
