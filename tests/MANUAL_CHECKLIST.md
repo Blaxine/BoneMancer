@@ -67,9 +67,10 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
 - [ ] On a rig with no layout the panel says "Lay out this rig's controls to
       pick them in one click." with **Apply Rigify Template** and **New Tab**.
 - [ ] Add > Armature > Human (Meta-Rig), Generate Rig, pick the generated rig,
-      click **Apply Rigify Template**: Body and Hands tabs appear over grey
-      silhouettes, the info line says how many controls were placed, and no
-      tweak control is on them. Clicking it again places 0.
+      click **Apply Rigify Template**: Body, Hands and Face tabs appear over
+      grey silhouettes, the info line says how many controls were placed
+      (138), and no tweak or Face (Secondary) control is on them. Clicking it
+      again places 0.
 - [ ] Clicking a cell selects only its bone and makes it active (Object Mode
       enters Pose Mode); the panel names the active bone under the grid. Ctrl+Z
       undoes each click.

@@ -366,9 +366,9 @@ tab with its silhouette and 36 controls.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S032 | S | Face definition | Face (16 wide): silhouette and Face + Face (Primary) bone → cell + side. | S021 | `bonemancer/core/` |
-|  | S033 | T | Face tests | Names exist on the generated rig; apply places 36; Face (Secondary) bones never placed. | S032 | `tests/test_actionable_bones.py` |
-|  | S034 | F | Version 1.2.1 | Manifest, package pin, changelog, checklist Face step. | S033 | `bonemancer/blender_manifest.toml`, `tests/test_package.py`, `CHANGELOG.md`, `tests/MANUAL_CHECKLIST.md` |
+| ✅ | S032 | S | Face definition | Face (16 wide): silhouette and Face + Face (Primary) bone → cell + side. | S021 | `bonemancer/core/` |
+| ✅ | S033 | T | Face tests | Names exist on the generated rig; apply places 36; Face (Secondary) bones never placed. | S032 | `tests/test_actionable_bones.py` |
+| ✅ | S034 | F | Version 1.2.1 | Manifest, package pin, changelog, checklist Face step. | S033 | `bonemancer/blender_manifest.toml`, `tests/test_package.py`, `CHANGELOG.md`, `tests/MANUAL_CHECKLIST.md` |
 
 ### Dependency graph
 
@@ -499,3 +499,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | 2026-10-26 | Blaxine | Slice 4 implemented. Correction: a system (non-editable) library override can't enter Pose Mode, so picking there, from a cell or the Bones panel, now refuses with a message instead of a traceback. |
 | 2026-10-26 | Blaxine | Slice 5 implemented. Q5 resolved: Hands and Face are 16 columns wide, not 20. A tab named like a template that was made by hand keeps its size and gets no silhouette. Apply Rigify Template sits in the empty state; the tab menu entry comes with the tab menu in slice 6. |
 | 2026-10-26 | Blaxine | Slice 6 implemented; manifest 1.2.0. The 1.2.0 zip builds, installs and enables in a clean user folder (4.5). Screenshots taken at the default sidebar width only: Blender has no API to widen the sidebar, so the wide and narrow checks are in the manual checklist. |
+| 2026-10-26 | Blaxine | Slice 7 implemented; manifest 1.2.1. Face is 16 wide, laid out from the control positions on a generated Rigify human. All slices done; the plan stays in progress until the developer's smoke test and manual checklist pass. |

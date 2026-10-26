@@ -247,8 +247,8 @@ class BONEMANCER_OT_move_cell(CellOperator, bpy.types.Operator):
 class BONEMANCER_OT_apply_layout_template(bpy.types.Operator):
     bl_idname = "bonemancer.apply_layout_template"
     bl_label = "Apply Rigify Template"
-    bl_description = ("Add Body and Hands tabs and place the controls of a generated Rigify human on them. "
-                      "Cells already filled are kept")
+    bl_description = ("Add Body, Hands and Face tabs and place the controls of a generated Rigify human on "
+                      "them. Cells already filled are kept")
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):

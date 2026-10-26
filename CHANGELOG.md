@@ -6,6 +6,15 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.1]
+
+### Added
+
+- **Apply Rigify Template** also adds a Face tab with the eye, brow, lid,
+  nose, lip, jaw, teeth and tongue controls of a generated Rigify human. On a
+  rig laid out with 1.2.0, applying again adds it without touching Body and
+  Hands.
+
 ## [1.2.0]
 
 ### Added

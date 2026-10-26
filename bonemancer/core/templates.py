@@ -113,7 +113,40 @@ HANDS = LayoutTemplate(
     }, 15),
 )
 
-TEMPLATES = (BODY, HANDS)
+# Face: 16 wide, front view, mirrored around column 7 like Body. Rigify's Face and
+# Face (Primary) controls; the eye aim target sits between the eyes.
+FACE = LayoutTemplate(
+    id="RIGIFY_FACE", tab="Face", columns=16, rows=14,
+    silhouette=(
+        "..###########...",
+        ".#############..",
+        ".#############..",
+        ".#############..",
+        ".#############..",
+        "###############.",
+        ".#############..",
+        ".#############..",
+        "..###########...",
+        "..###########...",
+        "...#########....",
+        "....#######.....",
+        ".....#####......",
+        "......###.......",
+    ),
+    cells={
+        "eyes": (3, 7), "nose_master": (5, 7), "nose.002": (6, 7), "teeth.T": (7, 7), "lip.T": (8, 7),
+        "tongue_master": (9, 7), "lip.B": (10, 7), "teeth.B": (11, 7), "chin": (12, 7), "jaw_master": (13, 7),
+        **sided({
+            "brow.T.{side}.002": (0, 3), "brow.T.{side}.001": (1, 1), "brow.T.{side}.003": (1, 5),
+            "lid.T.{side}.002": (2, 3), "master_eye.{side}": (3, 1), "eye.{side}": (3, 3),
+            "lid.B.{side}.002": (4, 3), "ear.{side}": (5, 0), "nose.{side}.001": (6, 6),
+            "cheek.B.{side}.001": (7, 2), "lip.T.{side}.001": (8, 6), "lips.{side}": (9, 5),
+            "lip.B.{side}.001": (10, 6),
+        }, 14),
+    },
+)
+
+TEMPLATES = (BODY, HANDS, FACE)
 
 
 def find_template(template_id):

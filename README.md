@@ -23,7 +23,7 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
   its bone (Shift+click adds or removes it); cells of selected bones show
   pressed, hidden bones are greyed, and cells are blue, red or yellow for left,
   right and centre. **Apply Rigify Template** lays out a generated Rigify
-  human's body and hand controls over a grey silhouette in one click; turn on
+  human's body, hand and face controls over a grey silhouette in one click; turn on
   **Edit Layout** (the pencil) to place the viewport's active bone in an empty
   cell, recolour, move or clear cells, and add tabs of your own for tails,
   props or anything else. The layout is saved on the rig.

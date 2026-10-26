@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "bonemancer"
-version = "1.2.0"
+version = "1.2.1"
 name = "Bone Mancer: Rig Central"
 tagline = "Animator hub for bone sets, props, constraints and shape keys"
 maintainer = "Blaxine"

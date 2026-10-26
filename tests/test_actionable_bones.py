@@ -126,9 +126,10 @@ def renaming_tabs():
            op("rename_layout_tab", name="Hands", new_name="Torso"), op("rename_layout_tab", new_name=" "),
            op("rename_layout_tab", name="Nope", new_name="X"), op("rename_layout_tab", name="Hands", new_name="Fingers"),
            tab_names(rig), settings.layout_tab)
-    return (got == ({'FINISHED'}, ["Torso", "Hands"], "Torso", "Torso", "RIGIFY_BODY",
+    return (got == ({'FINISHED'}, ["Torso", "Hands", "Face"], "Torso", "Torso", "RIGIFY_BODY",
                     [("arm.L", 3, 2, 'LEFT'), ("root", 22, 7, 'CENTER')],
-                    {'CANCELLED'}, {'CANCELLED'}, {'CANCELLED'}, {'FINISHED'}, ["Torso", "Fingers"], "Torso"), got)
+                    {'CANCELLED'}, {'CANCELLED'}, {'CANCELLED'}, {'FINISHED'}, ["Torso", "Fingers", "Face"], "Torso"),
+            got)
 check("Rename Tab renames the shown tab or a named one, keeping its cells; blank names and clashes are refused",
       renaming_tabs)
 
@@ -508,8 +509,8 @@ check("a filled cell's menu offers Left, Right, Centre, Move and Clear", cell_me
 
 # ---------------------------------------------------------------- templates
 
-# Columns each template mirrors across: Body around column 7, Hands down the middle
-MIRRORED = {"RIGIFY_BODY": 15, "RIGIFY_HANDS": 16}
+# Columns each template mirrors across: Body and Face around column 7, Hands down the middle
+MIRRORED = {"RIGIFY_BODY": 15, "RIGIFY_HANDS": 16, "RIGIFY_FACE": 15}
 
 
 def template_shapes():
@@ -530,7 +531,7 @@ def template_shapes():
         if any("tweak" in name for name in t.cells):
             bad.append((t.id, "tweak control"))
     got = (bad, [(t.id, len(t.cells)) for t in templates.TEMPLATES])
-    return (got == ([], [("RIGIFY_BODY", 50), ("RIGIFY_HANDS", 52)]), got)
+    return (got == ([], [("RIGIFY_BODY", 50), ("RIGIFY_HANDS", 52), ("RIGIFY_FACE", 36)]), got)
 check("templates: silhouettes fit and mirror, every control has its own cell, no tweak controls", template_shapes)
 
 
@@ -568,18 +569,27 @@ def apply_on_rigify():
     result = op("apply_layout_template")
     tabs = [(t.name, t.columns, t.rows, t.template) for t in human.bonemancer_layout]
     sides = {c.bone_name: c.side for t in human.bonemancer_layout for c in t.cells}
-    got = (result, tabs, len(template_cells("Body")), len(template_cells("Hands")),
+    got = (result, tabs, len(template_cells("Body")), len(template_cells("Hands")), len(template_cells("Face")),
            [sides[n] for n in ("hand_ik.L", "thumb.01.R.001", "head")], sc.bonemancer_settings.layout_tab,
            template_cells("Body") == sorted((n, r, c) for n, (r, c) in templates.BODY.cells.items()))
-    return (got == ({'FINISHED'}, [("Body", 16, 23, "RIGIFY_BODY"), ("Hands", 16, 9, "RIGIFY_HANDS")], 50, 52,
+    return (got == ({'FINISHED'}, [("Body", 16, 23, "RIGIFY_BODY"), ("Hands", 16, 9, "RIGIFY_HANDS"),
+                                   ("Face", 16, 14, "RIGIFY_FACE")], 50, 52, 36,
                     ['LEFT', 'RIGHT', 'CENTER'], "Body", True), got)
-check("Apply Rigify Template adds Body and Hands tabs and places every control in its cell", apply_on_rigify)
+check("Apply Rigify Template adds Body, Hands and Face tabs and places every control in its cell", apply_on_rigify)
+
+
+def no_secondary_face_controls():
+    secondary = sorted(b.name for b in human.data.bones if any(c.name == "Face (Secondary)" for c in b.collections))
+    placed = {c.bone_name for t in human.bonemancer_layout for c in t.cells}
+    got = (len(secondary) > 0, sorted(placed & set(secondary)))
+    return (got == (True, []), got)
+check("no Face (Secondary) control is placed", no_secondary_face_controls)
 
 
 def reapply_changes_nothing():
-    before = (template_cells("Body"), template_cells("Hands"))
+    before = [template_cells(t.tab) for t in templates.TEMPLATES]
     placed = templates.apply_templates(human)
-    return ((placed, (template_cells("Body"), template_cells("Hands"))) == (0, before), placed)
+    return ((placed, [template_cells(t.tab) for t in templates.TEMPLATES]) == (0, before), placed)
 check("applying again places nothing and changes nothing", reapply_changes_nothing)
 
 
@@ -615,7 +625,8 @@ def apply_on_plain_rig():
     view = draw()
     boxes = [d for d in view.drawn("operator") if d.args[0] == "bonemancer.layout_blank" and d.kwargs.get("emboss")]
     got = (placed, result, [(t.name, len(t.cells)) for t in rig.bonemancer_layout], len(boxes))
-    return (got == (0, {'FINISHED'}, [("Body", 0), ("Hands", 0)], len(templates.silhouette_cells(templates.BODY))),
+    return (got == (0, {'FINISHED'}, [("Body", 0), ("Hands", 0), ("Face", 0)],
+                    len(templates.silhouette_cells(templates.BODY))),
             got)
 check("on a rig that isn't Rigify the tabs appear with their silhouettes and nothing placed", apply_on_plain_rig)
 
