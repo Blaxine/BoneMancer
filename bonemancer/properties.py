@@ -92,6 +92,8 @@ class BONEMANCER_PG_LayoutTab(PropertyGroup):
     name: StringProperty(name="Name")
     columns: IntProperty(name="Columns", default=16)
     rows: IntProperty(name="Rows", default=24)
+    # Id of the Layout template the tab came from, for its silhouette; '' for user tabs
+    template: StringProperty(name="Template")
     cells: CollectionProperty(type=BONEMANCER_PG_LayoutCell)
 
 

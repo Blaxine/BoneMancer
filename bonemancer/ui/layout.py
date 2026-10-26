@@ -4,6 +4,7 @@
 from ..core.layout import (active_bone_name, active_tab, bone_exists, bone_hidden_in_layout, cells_by_position,
                            layout_is_editable, layout_tabs, moving_cell)
 from ..core.selection import bone_selected_in_viewport
+from ..core.templates import find_template, silhouette_cells
 from .common import hint
 
 SIDE_ICONS = {'LEFT': 'COLLECTION_COLOR_05', 'RIGHT': 'COLLECTION_COLOR_01', 'CENTER': 'COLLECTION_COLOR_03'}
@@ -19,7 +20,9 @@ def draw_layout(context, layout, rig):
     if tab is None:
         hint(layout, context, EMPTY_LAYOUT_HINT if editable else LOCKED_EMPTY_LAYOUT_HINT)
         if editable:
-            layout.operator("bonemancer.new_layout_tab", icon='ADD')
+            col = layout.column(align=True)
+            col.operator("bonemancer.apply_layout_template", icon='OUTLINER_OB_ARMATURE')
+            col.operator("bonemancer.new_layout_tab", icon='ADD')
         return
 
     row = layout.row(align=True)
@@ -45,6 +48,8 @@ def draw_layout(context, layout, rig):
 
 def draw_grid(layout, rig, tab, editing, moving=None):
     cells = cells_by_position(tab)
+    template = find_template(tab.template)
+    silhouette = silhouette_cells(template) if template else set()
     grid = layout.grid_flow(row_major=True, columns=tab.columns, even_columns=True, even_rows=True, align=True)
     for row in range(tab.rows):
         for column in range(tab.columns):
@@ -58,7 +63,9 @@ def draw_grid(layout, rig, tab, editing, moving=None):
                                    icon='BLANK1')
                 op.tab, op.row, op.column = tab.name, row, column
             else:
-                grid.operator("bonemancer.layout_blank", text="", icon='BLANK1', emboss=False)
+                # Embossed, the disabled button is a grey box of the silhouette
+                grid.operator("bonemancer.layout_blank", text="", icon='BLANK1',
+                              emboss=(row, column) in silhouette)
 
 
 def draw_cell(grid, rig, cell):

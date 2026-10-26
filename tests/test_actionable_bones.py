@@ -5,12 +5,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import addon_utils
 import bpy
 from helpers import check, finish, load_addon, refused, make_arm, clear_data, tmp_dir, record
 
 mod = load_addon()
 from bonemancer import handlers
-from bonemancer.core import compat, layout, selection
+from bonemancer.core import compat, layout, selection, templates
 from bonemancer.ui import panels
 check("register()", mod.register)
 sc = bpy.context.scene
@@ -68,8 +69,9 @@ def empty_states():
     got = (any("Pick an armature" in t or "armature" in t.lower() for t in no_rig.texts("label")),
            [d.args[0] for d in empty.drawn("operator")],
            any("Lay out" in t for t in empty.texts("label")))
-    return (got == (True, ["bonemancer.new_layout_tab"], True), got)
-check("no rig and empty layout show their hints; the empty layout offers New Tab", empty_states)
+    return (got == (True, ["bonemancer.apply_layout_template", "bonemancer.new_layout_tab"], True), got)
+check("no rig and empty layout show their hints; the empty layout offers Apply Rigify Template and New Tab",
+      empty_states)
 
 
 def tab_creation():
@@ -448,6 +450,133 @@ def cell_menu_drawing():
     return (got == [("set_cell_side", "Left"), ("set_cell_side", "Right"), ("set_cell_side", "Centre"),
                     ("start_move", "Move"), ("clear_cell", "Clear")], got)
 check("a filled cell's menu offers Left, Right, Centre, Move and Clear", cell_menu_drawing)
+
+
+# ---------------------------------------------------------------- templates
+
+# Columns each template mirrors across: Body around column 7, Hands down the middle
+MIRRORED = {"RIGIFY_BODY": 15, "RIGIFY_HANDS": 16}
+
+
+def template_shapes():
+    bad = []
+    for t in templates.TEMPLATES:
+        positions = list(t.cells.values())
+        width = MIRRORED[t.id]
+        if len(t.silhouette) != t.rows or any(len(line) != t.columns for line in t.silhouette):
+            bad.append((t.id, "silhouette size"))
+        if any(line[:width] != line[:width][::-1] for line in t.silhouette):
+            bad.append((t.id, "silhouette not mirrored"))
+        if any(t.cells[n.replace(".R", ".L", 1)] != (r, width - 1 - c) for n, (r, c) in t.cells.items() if ".R" in n):
+            bad.append((t.id, "controls not mirrored"))
+        if len(set(positions)) != len(positions):
+            bad.append((t.id, "two controls share a cell"))
+        if any(not (0 <= r < t.rows and 0 <= c < t.columns) for r, c in positions):
+            bad.append((t.id, "control outside the grid"))
+        if any("tweak" in name for name in t.cells):
+            bad.append((t.id, "tweak control"))
+    got = (bad, [(t.id, len(t.cells)) for t in templates.TEMPLATES])
+    return (got == ([], [("RIGIFY_BODY", 50), ("RIGIFY_HANDS", 52)]), got)
+check("templates: silhouettes fit and mirror, every control has its own cell, no tweak controls", template_shapes)
+
+
+def rigify_human():
+    """Generate a Rigify human; returns the generated rig, picked, with an empty layout."""
+    pick(None)
+    clear_data()
+    sc.bonemancer_settings.layout_tab = ""
+    addon_utils.enable("rigify", default_set=True)
+    bpy.ops.object.armature_human_metarig_add()
+    meta = bpy.context.active_object
+    bpy.ops.pose.rigify_generate()
+    rig = next(o for o in bpy.data.objects if o.type == 'ARMATURE' and o != meta)
+    bpy.context.view_layer.objects.active = rig
+    pick(rig)
+    return rig
+
+
+human = None
+
+
+def template_bones_exist():
+    global human
+    human = rigify_human()
+    missing = sorted(name for t in templates.TEMPLATES for name in t.cells if name not in human.data.bones)
+    return (missing == [], missing)
+check("templates: every control is on a generated Rigify human (guards Rigify renames)", template_bones_exist)
+
+
+def template_cells(tab):
+    return sorted((c.bone_name, c.row, c.column) for c in layout.find_tab(human, tab).cells)
+
+
+def apply_on_rigify():
+    result = op("apply_layout_template")
+    tabs = [(t.name, t.columns, t.rows, t.template) for t in human.bonemancer_layout]
+    sides = {c.bone_name: c.side for t in human.bonemancer_layout for c in t.cells}
+    got = (result, tabs, len(template_cells("Body")), len(template_cells("Hands")),
+           [sides[n] for n in ("hand_ik.L", "thumb.01.R.001", "head")], sc.bonemancer_settings.layout_tab,
+           template_cells("Body") == sorted((n, r, c) for n, (r, c) in templates.BODY.cells.items()))
+    return (got == ({'FINISHED'}, [("Body", 16, 23, "RIGIFY_BODY"), ("Hands", 16, 9, "RIGIFY_HANDS")], 50, 52,
+                    ['LEFT', 'RIGHT', 'CENTER'], "Body", True), got)
+check("Apply Rigify Template adds Body and Hands tabs and places every control in its cell", apply_on_rigify)
+
+
+def reapply_changes_nothing():
+    before = (template_cells("Body"), template_cells("Hands"))
+    placed = templates.apply_templates(human)
+    return ((placed, (template_cells("Body"), template_cells("Hands"))) == (0, before), placed)
+check("applying again places nothing and changes nothing", reapply_changes_nothing)
+
+
+def hand_edits_survive():
+    settings = sc.bonemancer_settings
+    settings.edit_layout = True
+    hand = templates.BODY.cells["hand_ik.R"]
+    cell_op("start_move", *hand)
+    cell_op("move_cell", 21, 0)                         # hand_ik.R moved
+    cell_op("set_cell_side", *templates.BODY.cells["hips"], side='LEFT')
+    cell_op("clear_cell", *templates.BODY.cells["head"])     # cleared, its cell stays empty
+    neck = templates.BODY.cells["neck"]
+    cell_op("clear_cell", *neck)                        # cleared, and its cell taken by root
+    cell_op("start_move", *templates.BODY.cells["root"])
+    cell_op("move_cell", *neck)
+    placed = templates.apply_templates(human)
+    body = {c.bone_name: (c.row, c.column, c.side) for c in layout.find_tab(human, "Body").cells}
+    got = (placed, body["hand_ik.R"][:2], body["hips"][2], body.get("head", ())[:2], "neck" in body,
+           body["root"][:2], hand in [v[:2] for v in body.values()])
+    return (got == (1, (21, 0), 'LEFT', templates.BODY.cells["head"], False, neck, False), got)
+check("re-applying keeps moved and recoloured cells, and places a cleared control only if its cell is free",
+      hand_edits_survive)
+
+
+def apply_on_plain_rig():
+    pick(None)
+    clear_data()
+    rig = make_arm("Plain", ("Bone", "Bone.001"))
+    pick(rig)
+    placed = templates.apply_templates(rig)
+    rig.bonemancer_layout.clear()
+    result = op("apply_layout_template")
+    view = draw()
+    boxes = [d for d in view.drawn("operator") if d.args[0] == "bonemancer.layout_blank" and d.kwargs.get("emboss")]
+    got = (placed, result, [(t.name, len(t.cells)) for t in rig.bonemancer_layout], len(boxes))
+    return (got == (0, {'FINISHED'}, [("Body", 0), ("Hands", 0)], len(templates.silhouette_cells(templates.BODY))),
+            got)
+check("on a rig that isn't Rigify the tabs appear with their silhouettes and nothing placed", apply_on_plain_rig)
+
+
+def user_tab_kept():
+    rig = fresh()
+    new_tab(name="Body", columns=4, rows=4)
+    place("root", 0, 0)
+    op("apply_layout_template")
+    body = layout.find_tab(rig, "Body")
+    view = draw()
+    boxes = [d for d in view.drawn("operator") if d.args[0] == "bonemancer.layout_blank" and d.kwargs.get("emboss")]
+    got = ((body.columns, body.rows, body.template), cells(rig), len(boxes))
+    return (got == ((4, 4, ""), [("root", 0, 0, 'CENTER')], 0), got)
+check("a tab of the same name made by hand is kept as it is, without a silhouette", user_tab_kept)
 
 
 # ---------------------------------------------------------------- saving

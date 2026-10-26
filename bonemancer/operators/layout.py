@@ -7,6 +7,7 @@ from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 from ..core.layout import (LAYOUT_LOCKED_MESSAGE, active_bone_name, bone_hidden_in_layout, cell_at, clear_move,
                            find_tab, layout_edit_refusal, moving_cell, place_bone)
 from ..core.selection import select_bone_in_viewport, toggle_bone_in_viewport
+from ..core.templates import apply_templates
 from ..core.utils import get_rig, tag_addon_panels
 from ..ui.layout import draw_cell_menu
 
@@ -239,6 +240,28 @@ class BONEMANCER_OT_move_cell(CellOperator, bpy.types.Operator):
             return {'CANCELLED'}
         cell.row, cell.column = self.row, self.column
         clear_move(settings)
+        tag_addon_panels(context)
+        return {'FINISHED'}
+
+
+class BONEMANCER_OT_apply_layout_template(bpy.types.Operator):
+    bl_idname = "bonemancer.apply_layout_template"
+    bl_label = "Apply Rigify Template"
+    bl_description = ("Add Body and Hands tabs and place the controls of a generated Rigify human on them. "
+                      "Cells already filled are kept")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        rig = get_rig(context.scene)
+        refusal = layout_edit_refusal(rig)
+        if refusal:
+            self.report({'WARNING'}, refusal)
+            return {'CANCELLED'}
+        had_tabs = len(rig.bonemancer_layout) > 0
+        placed = apply_templates(rig)
+        if not had_tabs:
+            context.scene.bonemancer_settings.layout_tab = rig.bonemancer_layout[0].name
+        self.report({'INFO'}, f"{placed} control{'' if placed == 1 else 's'} placed")
         tag_addon_panels(context)
         return {'FINISHED'}
 

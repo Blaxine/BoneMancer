@@ -104,7 +104,7 @@ the branch (redesign, Deform / IK, property and constraint editing).
   nothing.
 - **Edit Layout** is available only on a local (not linked, not overridden)
   editable rig.
-- **Templates**: Body (16 columns) and Hands (20 columns) in 1.2.0, Face (20
+- **Templates**: Body (16 columns) and Hands (16 columns) in 1.2.0, Face (16
   columns) in 1.2.1. Applying creates a missing tab, then places each template
   bone that exists on the rig and isn't on that tab yet, into its cell if the
   cell is empty. Never moves, clears or recolours existing cells.
@@ -337,10 +337,10 @@ fills Body and Hands tabs over silhouettes, and applying again changes nothing.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S021 | S | Template definitions | Body (16 wide) and Hands (20 wide): silhouette mask, rows, and Rigify bone → cell + side for the agreed control sets. Shipped as add-on data in `core/`. | S014 | `bonemancer/core/` |
-|  | S022 | S | Apply Rigify Template | `UNDO` operator: create missing tabs with template id, fill-gaps merge per *Architectural decisions*, report "N controls placed". | S021 | `bonemancer/operators/` |
-|  | S023 | U | Silhouette drawing + entry points | Draw silhouette boxes from the tab's template id; Apply button in empty state and tab menu. | S022 | `bonemancer/ui/` |
-|  | S024 | T | Template tests | Generate a Rigify human once in the suite; every template bone name exists on it (guards Rigify renames); apply counts; no tweak bone placed; re-apply idempotent; hand edits survive; non-Rigify rig → silhouettes, 0 placed. | S023 | `tests/test_actionable_bones.py` |
+| ✅ | S021 | S | Template definitions | Body (16 wide) and Hands (16 wide): silhouette mask, rows, and Rigify bone → cell + side for the agreed control sets. Shipped as add-on data in `core/`. | S014 | `bonemancer/core/` |
+| ✅ | S022 | S | Apply Rigify Template | `UNDO` operator: create missing tabs with template id, fill-gaps merge per *Architectural decisions*, report "N controls placed". | S021 | `bonemancer/operators/` |
+| ✅ | S023 | U | Silhouette drawing + entry points | Draw silhouette boxes from the tab's template id; Apply button in empty state and tab menu. | S022 | `bonemancer/ui/` |
+| ✅ | S024 | T | Template tests | Generate a Rigify human once in the suite; every template bone name exists on it (guards Rigify renames); apply counts; no tweak bone placed; re-apply idempotent; hand edits survive; non-Rigify rig → silhouettes, 0 placed. | S023 | `tests/test_actionable_bones.py` |
 
 ### Slice 6 — User tabs and the 1.2.0 release
 
@@ -366,7 +366,7 @@ tab with its silhouette and 36 controls.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S032 | S | Face definition | Face (20 wide): silhouette and Face + Face (Primary) bone → cell + side. | S021 | `bonemancer/core/` |
+|  | S032 | S | Face definition | Face (16 wide): silhouette and Face + Face (Primary) bone → cell + side. | S021 | `bonemancer/core/` |
 |  | S033 | T | Face tests | Names exist on the generated rig; apply places 36; Face (Secondary) bones never placed. | S032 | `tests/test_actionable_bones.py` |
 |  | S034 | F | Version 1.2.1 | Manifest, package pin, changelog, checklist Face step. | S033 | `bonemancer/blender_manifest.toml`, `tests/test_package.py`, `CHANGELOG.md`, `tests/MANUAL_CHECKLIST.md` |
 
@@ -415,9 +415,9 @@ S021 → S032 → S033 → S034
   needs nothing more. *(Blaxine)*
 - [x] **Q4 — Dim isolated cells — Resolved.** Labels between cells squeezed the
   buttons; empty cells are now disabled buttons (see *Constraints*). *(Blaxine)*
-- [ ] **Q5 — Cell size on Hands / Face.** Whether 20 columns stay clickable at
-  280 px. Deferred until S023's screenshot; widen the sidebar hint or reduce
-  columns if not.
+- [x] **Q5 — Cell size on Hands / Face — Resolved.** At the default sidebar width
+  20 columns gave cells about 12 px wide, with neighbouring fingers merging into
+  bars; Hands is 16 wide, like Body, and Face will be too. *(Blaxine)*
 
 ## Smoke Test
 
@@ -497,3 +497,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | 2026-10-26 | Blaxine | Slice 2 implemented. Q3 resolved: solo needs no extra rule. Ctrl/Alt acting as a plain click is not covered by a test (a background run can't send a click event); check it by hand. |
 | 2026-10-26 | Blaxine | Slice 3 implemented. A filled cell's menu is a popup from a cell button, not a menu button (those draw a dropdown arrow in the grid). A move is also dropped by switching tab, turning Edit Layout off or clearing the moved cell. |
 | 2026-10-26 | Blaxine | Slice 4 implemented. Correction: a system (non-editable) library override can't enter Pose Mode, so picking there, from a cell or the Bones panel, now refuses with a message instead of a traceback. |
+| 2026-10-26 | Blaxine | Slice 5 implemented. Q5 resolved: Hands and Face are 16 columns wide, not 20. A tab named like a template that was made by hand keeps its size and gets no silhouette. Apply Rigify Template sits in the empty state; the tab menu entry comes with the tab menu in slice 6. |
