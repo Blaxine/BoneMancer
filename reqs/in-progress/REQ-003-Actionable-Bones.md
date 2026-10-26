@@ -5,13 +5,13 @@
 | ID | REQ-003 |
 | Title | Actionable Bones |
 | SOLVE | — |
-| Status | Todo |
+| Status | In Progress |
 | Phase | 1.2 (Face template: 1.2.1) |
 | Tier | 1 |
 | Area | Actionable Bones panel, layout storage, selection, Rigify templates, tests |
 | Author | Blaxine |
 | Created | 2026-10-22 |
-| Last Updated | 2026-10-22 |
+| Last Updated | 2026-10-26 |
 
 > Source PRD: REQ-003-PRD-Actionable-Bones.md
 >
@@ -48,7 +48,14 @@ the branch (redesign, Deform / IK, property and constraint editing).
   even_rows=True, align=True)` gives ~15 px square cells; disabled empty
   operator buttons paint a grey silhouette; `COLLECTION_COLOR_05` / `_01` / `_03`
   icons read as blue / red / yellow; `depress=True` shows the selected cell blue.
-  Some isolated cells drew slightly dimmer than their neighbours in the prototype.
+- **Every grid cell must be a button.** Labels or sub-layouts among the cells
+  squeeze the real buttons thin and hide their pressed state. Empty cells are a
+  never-enabled operator (`poll` False) drawn with `emboss=False`; with
+  `emboss=True` the same operator draws the grey silhouette box.
+- **A `description()` classmethod on an operator stops its buttons drawing
+  pressed** (`depress=True` is ignored; measured on 4.5.4 and 5.2.2). Cell
+  buttons use a static description; the panel names the active bone under the
+  grid instead of a per-bone tooltip.
 - **Generated Rigify human (4.5.4 and 5.2.2): 216 control bones, identical names on
   both.** `rigify` is bundled; `addon_utils.enable("rigify")` works under
   `--factory-startup` with `BLENDER_USER_RESOURCES` isolated; metarig + generate
@@ -144,10 +151,10 @@ under their cells. The panel shows one tab at a time; a tab bar switches tabs.
   Layout** toggle (pencil icon; disabled with tooltip on linked/overridden rigs:
   "The layout belongs to the rig's file; open it there to edit").
 - **Grid**: cells only, no text. Placed cell = side icon, pressed while the bone
-  is selected, greyed while hidden; tooltip = bone name (plus "hidden" when
-  greyed). Missing bone (renamed or deleted outside a tracked path) = `ERROR`
-  icon, tooltip "<name> (missing)". Silhouette cells = grey disabled boxes.
-  Empty cells = blank.
+  is selected, greyed while hidden; static tooltip "Select this bone". Under the
+  grid, a greyed line names the active bone. Missing bone (renamed or deleted
+  outside a tracked path) = `ERROR` icon. Silhouette cells = grey disabled
+  boxes. Empty cells = blank.
 - **Edit Layout on**: empty cells become clickable; clicking one places the
   viewport's active bone ("Select a bone in the viewport first" when there is
   none). Clicking a filled cell opens a small menu: Left / Right / Centre, Move,
@@ -272,13 +279,13 @@ cell selects the bone; the layout survives save and reopen.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S001 | P | Layout storage | Tab and cell PropertyGroups per *Architectural decisions*; `Object.bonemancer_layout`; Edit Layout flag and active tab on `BONEMANCER_PG_Settings`; register / unregister; `OBJECT_PROPS`. | — | `bonemancer/properties.py` |
-|  | S002 | S | New Tab (minimal) | `UNDO` operator adding a named tab with columns / rows on an editable local rig; sets it active. | S001 | `bonemancer/operators/` |
-|  | S003 | S | Place on empty cell | Edit Layout click on an empty cell stores the viewport's active bone there; refuses without an active bone. | S001 | `bonemancer/operators/`, `bonemancer/core/` |
-|  | S004 | S | Pick (plain click) | `UNDO` operator: plain click selects through `select_bone_in_viewport`; reports its error messages. | S001 | `bonemancer/operators/` |
-|  | S005 | U | Actionable Bones panel | Panel between Rig and Bones; no-rig and empty-layout states; tab buttons; Edit Layout toggle; `grid_flow` grid of cells; Bones gets `DEFAULT_CLOSED`. | S002, S003, S004 | `bonemancer/ui/panels.py`, `bonemancer/ui/__init__.py` |
-|  | S006 | T | Actionable Bones suite (new) | New suite: new tab, place, pick selects the bone, save + reopen keeps the layout, panel draws with and without a rig/layout via `record`. | S005 | `tests/test_actionable_bones.py`, `tests/helpers.py` |
-|  | S007 | T | Extend smoke | `EXPECTED_PROPS` + `bonemancer_layout`; `ui6` order Rig, Actionable Bones, Bones (closed), Bone Sets, Rig Check, Shape Keys. | S005 | `tests/test_smoke.py` |
+| ✅ | S001 | P | Layout storage | Tab and cell PropertyGroups per *Architectural decisions*; `Object.bonemancer_layout`; Edit Layout flag and active tab on `BONEMANCER_PG_Settings`; register / unregister; `OBJECT_PROPS`. | — | `bonemancer/properties.py` |
+| ✅ | S002 | S | New Tab (minimal) | `UNDO` operator adding a named tab with columns / rows on an editable local rig; sets it active. | S001 | `bonemancer/operators/` |
+| ✅ | S003 | S | Place on empty cell | Edit Layout click on an empty cell stores the viewport's active bone there; refuses without an active bone. | S001 | `bonemancer/operators/`, `bonemancer/core/` |
+| ✅ | S004 | S | Pick (plain click) | `UNDO` operator: plain click selects through `select_bone_in_viewport`; reports its error messages. | S001 | `bonemancer/operators/` |
+| ✅ | S005 | U | Actionable Bones panel | Panel between Rig and Bones; no-rig and empty-layout states; tab buttons; Edit Layout toggle; `grid_flow` grid of cells; Bones gets `DEFAULT_CLOSED`. | S002, S003, S004 | `bonemancer/ui/panels.py`, `bonemancer/ui/__init__.py` |
+| ✅ | S006 | T | Actionable Bones suite (new) | New suite: new tab, place, pick selects the bone, save + reopen keeps the layout, panel draws with and without a rig/layout via `record`. | S005 | `tests/test_actionable_bones.py`, `tests/helpers.py` |
+| ✅ | S007 | T | Extend smoke | `EXPECTED_PROPS` + `bonemancer_layout`; `ui6` order Rig, Actionable Bones, Bones (closed), Bone Sets, Rig Check, Shape Keys. | S005 | `tests/test_smoke.py` |
 
 ### Slice 2 — Picking that matches the viewport
 
@@ -291,7 +298,7 @@ bone renamed with F2 keeps its cell.
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
 |  | S008 | S | Shift toggle | Shift+click toggles the bone without clearing others (pose and armature Edit Mode); added bone becomes active; Ctrl/Alt = plain click. | S004 | `bonemancer/operators/`, `bonemancer/core/selection.py` |
 |  | S009 | S | Hidden for the layout | Rule per *Architectural decisions* (own flag, or collections none effectively visible); pick operators do nothing on hidden bones. | S004 | `bonemancer/core/` |
-|  | S010 | U | Cell states | Pressed for selected, greyed for hidden, `ERROR` for missing; tooltip from `description` (bone name, "hidden", "missing"). | S008, S009 | `bonemancer/ui/` |
+|  | S010 | U | Cell states | Pressed for selected, greyed for hidden, `ERROR` for missing. | S008, S009 | `bonemancer/ui/` |
 |  | S011 | S | Rename following | Rewrite cell bone names on every tab beside `rename_set_entries` in `update_bone_list` and `BONEMANCER_OT_rename_bone`. | S001 | `bonemancer/core/selection.py`, `bonemancer/operators/bones.py`, `bonemancer/core/` |
 |  | S012 | T | Extend suite | Shift add/remove, active bone, Ctrl as plain click; hidden by flag, by collection, by hidden parent collection, by a soloed other collection; missing cell; Rename and outside-rename following; undo per pick. | S010, S011 | `tests/test_actionable_bones.py` |
 
@@ -406,8 +413,8 @@ S021 → S032 → S033 → S034
 - [ ] **Q3 — Solo collections.** Does `is_visible_effectively` turn false for
   collections hidden by another collection's solo, or does the rule need
   `Armature.is_solo_active` / `is_solo` too? Deferred until S012's solo test.
-- [ ] **Q4 — Dim isolated cells.** Some cells drew dimmer in the prototype.
-  Deferred until the S005 screenshot shows whether the real panel does it too.
+- [x] **Q4 — Dim isolated cells — Resolved.** Labels between cells squeezed the
+  buttons; empty cells are now disabled buttons (see *Constraints*). *(Blaxine)*
 - [ ] **Q5 — Cell size on Hands / Face.** Whether 20 columns stay clickable at
   280 px. Deferred until S023's screenshot; widen the sidebar hint or reduce
   columns if not.
@@ -486,3 +493,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | Date | Author | Summary of Change |
 | ---- | ------ | ----------------- |
 | 2026-10-22 | Blaxine | Initial plan. |
+| 2026-10-26 | Blaxine | Slice 1 implemented. Empty cells are a disabled no-op button (labels squeezed the cell buttons); cell buttons have no per-bone `description()` (it stops `depress` drawing), so the panel names the active bone under the grid instead of a tooltip. Q4 resolved. |

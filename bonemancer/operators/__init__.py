@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The add-on's operators (bonemancer.*)."""
 
-from . import bone_sets, bones, constraints, custom_props, rig_check, shape_keys
+from . import bone_sets, bones, constraints, custom_props, layout, rig_check, shape_keys
 
 classes = (
     bone_sets.BONEMANCER_OT_import_bone_collections,
@@ -24,4 +24,9 @@ classes = (
     rig_check.BONEMANCER_OT_select_issue,
     rig_check.BONEMANCER_OT_ignore_issue,
     rig_check.BONEMANCER_OT_unignore_issue,
+    layout.BONEMANCER_OT_pick_bone,
+    layout.BONEMANCER_OT_layout_blank,
+    layout.BONEMANCER_OT_place_bone,
+    layout.BONEMANCER_OT_new_layout_tab,
+    layout.BONEMANCER_OT_show_layout_tab,
 )

@@ -11,6 +11,7 @@ classes = (
     lists.BONEMANCER_UL_rig_issues,
     # Panels show in the order they are registered
     panels.BONEMANCER_PT_rig,
+    panels.BONEMANCER_PT_actionable_bones,
     panels.BONEMANCER_PT_bones,
     panels.BONEMANCER_PT_bone_sets,
     panels.BONEMANCER_PT_rig_check,

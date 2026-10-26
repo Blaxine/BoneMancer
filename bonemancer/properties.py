@@ -2,7 +2,8 @@
 """Data the add-on stores in .blend files."""
 
 import bpy
-from bpy.props import StringProperty, IntProperty, FloatProperty, BoolProperty, CollectionProperty, PointerProperty
+from bpy.props import (StringProperty, IntProperty, FloatProperty, BoolProperty, CollectionProperty, EnumProperty,
+                       PointerProperty)
 from bpy.types import PropertyGroup
 
 from .core.selection import on_armature_change, on_picker_index
@@ -61,6 +62,31 @@ class BONEMANCER_PG_Settings(PropertyGroup):
     )
     # Armature the bone_selection list was built from (for rename tracking)
     bone_list_owner: PointerProperty(type=bpy.types.Object)
+    # Actionable Bones: the Layout tab shown, and whether clicks edit the layout
+    layout_tab: StringProperty(name="Layout Tab")
+    edit_layout: BoolProperty(
+        name="Edit Layout",
+        description="Click an empty cell to place the bone that's active in the viewport",
+        default=False,
+    )
+
+
+class BONEMANCER_PG_LayoutCell(PropertyGroup):
+    bone_name: StringProperty(name="Bone")
+    row: IntProperty(name="Row")
+    column: IntProperty(name="Column")
+    side: EnumProperty(
+        name="Side",
+        items=[('LEFT', "Left", ""), ('RIGHT', "Right", ""), ('CENTER', "Centre", "")],
+        default='CENTER',
+    )
+
+
+class BONEMANCER_PG_LayoutTab(PropertyGroup):
+    name: StringProperty(name="Name")
+    columns: IntProperty(name="Columns", default=16)
+    rows: IntProperty(name="Rows", default=24)
+    cells: CollectionProperty(type=BONEMANCER_PG_LayoutCell)
 
 
 class BONEMANCER_PG_ShapeKey(bpy.types.PropertyGroup):
@@ -132,11 +158,13 @@ classes = (
     BONEMANCER_PG_Issue,
     BONEMANCER_PG_IgnoredIssue,
     BONEMANCER_PG_RigCheck,
+    BONEMANCER_PG_LayoutCell,
+    BONEMANCER_PG_LayoutTab,
 )
 
 SCENE_PROPS = ["bonemancer_rig", "bonemancer_settings", "bonemancer_shape_keys", "bonemancer_selected_bone",
                "bonemancer_rig_check"]
-OBJECT_PROPS = ["bonemancer_sets", "bonemancer_ignored_issues"]
+OBJECT_PROPS = ["bonemancer_sets", "bonemancer_ignored_issues", "bonemancer_layout"]
 
 
 def register():
@@ -173,6 +201,9 @@ def register():
         type=BONEMANCER_PG_IgnoredIssue,
         override={'LIBRARY_OVERRIDABLE', 'USE_INSERTION'}
     )
+    # Actionable Bones layout. Not overridable: an override shows the layout
+    # from the rig's own file.
+    bpy.types.Object.bonemancer_layout = CollectionProperty(type=BONEMANCER_PG_LayoutTab)
 
 
 def unregister_properties(base_type, props):

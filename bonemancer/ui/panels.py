@@ -8,6 +8,7 @@ from ..core.selection import selected_bone_names
 from ..core.utils import get_rig
 from .common import NO_RIG_HINT, hint, plural
 from .draw import draw_bone_set, draw_bone_settings, draw_issue_details
+from .layout import draw_layout
 
 
 class BONEMANCER_PT_shape_keys(bpy.types.Panel):
@@ -77,12 +78,28 @@ class BONEMANCER_PT_rig(bpy.types.Panel):
         layout.prop(rig, "show_in_front", text="In Front")
 
 
+class BONEMANCER_PT_actionable_bones(bpy.types.Panel):
+    bl_label = "Actionable Bones"
+    bl_idname = "BONEMANCER_PT_actionable_bones"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Bonemancer'
+
+    def draw(self, context):
+        rig = get_rig(context.scene)
+        if not rig:
+            hint(self.layout, context, NO_RIG_HINT)
+            return
+        draw_layout(context, self.layout, rig)
+
+
 class BONEMANCER_PT_bones(bpy.types.Panel):
     bl_label = "Bones"
     bl_idname = "BONEMANCER_PT_bones"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'Bonemancer'
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         layout = self.layout

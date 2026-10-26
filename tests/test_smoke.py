@@ -759,9 +759,10 @@ check("UI5 hints wrap to the sidebar's width", ui5)
 def ui6():
     panel_classes = [c for c in mod.classes if issubclass(c, bpy.types.Panel)]
     got = [(c.bl_label, 'DEFAULT_CLOSED' in getattr(c, "bl_options", set())) for c in panel_classes]
-    return (got == [("Rig", False), ("Bones", False), ("Bone Sets", False), ("Rig Check", True),
-                    ("Shape Keys", True)], got)
-check("UI6 panels are Rig, Bones, Bone Sets, Rig Check, Shape Keys; the first three start open", ui6)
+    return (got == [("Rig", False), ("Actionable Bones", False), ("Bones", True), ("Bone Sets", False),
+                    ("Rig Check", True), ("Shape Keys", True)], got)
+check("UI6 panels are Rig, Actionable Bones, Bones, Bone Sets, Rig Check, Shape Keys; Bones, Rig Check and "
+      "Shape Keys start closed", ui6)
 
 
 def ui7():
@@ -1005,7 +1006,8 @@ check("UI says Bone Set, never collection/group", lambda: (wrong_set_terms() == 
 
 
 EXPECTED_PROPS = sorted(["bonemancer_rig", "bonemancer_settings", "bonemancer_shape_keys", "bonemancer_selected_bone",
-                         "bonemancer_rig_check", "bonemancer_sets", "bonemancer_ignored_issues"])
+                         "bonemancer_rig_check", "bonemancer_sets", "bonemancer_ignored_issues",
+                         "bonemancer_layout"])
 check("registered properties match the allow-list", lambda: (registered_props() == EXPECTED_PROPS, registered_props()))
 
 reset()
