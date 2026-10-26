@@ -6,12 +6,12 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy
-from helpers import check, finish, load_addon, refused, make_arm, clear_data, tmp_dir, record
+from helpers import check, finish, load_addon, refused, make_arm, clear_data, tmp_dir, record, RecordingLayout
 
 mod = load_addon()
-from bonemancer.core import rig_check, selection, utils
+from bonemancer.core import compat, rig_check, selection, utils
 from bonemancer.operators import rig_check as rig_check_ops
-from bonemancer.ui import panels
+from bonemancer.ui import layout as layout_ui, panels
 check("register()", mod.register)
 sc = bpy.context.scene
 work = tmp_dir()
@@ -50,6 +50,10 @@ def write_library():
         arm.pose.bones[bone].constraints.new('COPY_ROTATION')
     ignored = arm.bonemancer_ignored_issues.add()
     ignored.check, ignored.bone, ignored.detail = "constraint", "knee", "Copy Rotation"
+    tab = arm.bonemancer_layout.add()      # Actionable Bones: a layout made in the library file
+    tab.name = "Body"
+    cell = tab.cells.add()
+    cell.bone_name, cell.row, cell.column = "hip", 0, 0
     bpy.data.libraries.write(lib_path, {coll})
     clear_data()
     with bpy.data.libraries.load(lib_path, link=True) as (src, dst):
@@ -134,6 +138,52 @@ def linked_sets_fold():
 check("linked rig: Bone Sets fold with sidebar state, since the rig can't change", linked_sets_fold)
 
 
+def layout_view():
+    """The Actionable Bones operators drawn, and whether the Edit Layout toggle is."""
+    drawn = record(panels.BONEMANCER_PT_actionable_bones.draw, bpy.context)
+    return (sorted({d.args[0].split(".")[1] for d in drawn.drawn("operator")} - {"layout_blank", "show_layout_tab"}),
+            [d.args[1] for d in drawn.drawn("prop")])
+
+
+def layout_cells(r):
+    return [(t.name, [(c.bone_name, c.row, c.column) for c in t.cells]) for t in r.bonemancer_layout]
+
+
+def layout_edits():
+    """Try every layout edit; returns their results."""
+    cell = dict(tab="Body", row=0, column=0)
+    return [refusal(lambda: bpy.ops.bonemancer.place_bone(tab="Body", row=1, column=1)),
+            refusal(lambda: bpy.ops.bonemancer.new_layout_tab(name="Mine")),
+            refusal(lambda: bpy.ops.bonemancer.set_cell_side(side='LEFT', **cell)),
+            refusal(lambda: bpy.ops.bonemancer.start_move(**cell)),
+            refusal(lambda: bpy.ops.bonemancer.clear_cell(**cell))]
+
+
+def linked_layout():
+    sc.collection.objects.link(linked)
+    try:
+        pick(linked)
+        linked.data.bones.active = None
+        got = (layout_view(), refusal(lambda: bpy.ops.bonemancer.pick_bone(bone_name="hip")), layout_edits(),
+               layout_cells(linked))
+    finally:
+        pick(None)
+        sc.collection.objects.unlink(linked)
+    return (got == ((["layout_locked", "pick_bone"], []), {'CANCELLED'}, [{'CANCELLED'}] * 5,
+                    [("Body", [("hip", 0, 0)])]), got)
+check("linked rig: the library's layout shows read-only; picking and editing are refused", linked_layout)
+
+
+def locked_empty_layout():
+    import types
+    fake = types.SimpleNamespace(library=None, override_library=object(), bonemancer_layout=[])
+    drawn = RecordingLayout()
+    layout_ui.draw_layout(bpy.context, drawn, fake)
+    got = (" ".join(drawn.texts("label")), [d.args[0] for d in drawn.drawn("operator")])
+    return (got == ("This rig has no layout. Add one in the rig's own file.", []), got)
+check("a library rig without a layout says where to add one, with no New Tab", locked_empty_layout)
+
+
 rig = None
 
 
@@ -147,6 +197,29 @@ def make_override():
     pick(rig)
     return (utils.rig_is_editable(rig), rig.name)
 check("override rig is editable", make_override)
+
+
+
+def override_layout():
+    bpy.context.view_layer.objects.active = rig
+    pick(rig)
+    shown = layout_view()
+    # An API-made override is a system one, which can't enter Pose Mode
+    locked = (refusal(lambda: bpy.ops.bonemancer.pick_bone(bone_name="hip")),
+              refusal(lambda: bpy.ops.bonemancer.pick_bone(bone_name="hip", extend=True)), rig.mode)
+    rig.override_library.is_system_override = False      # as Make Editable does
+    picked = bpy.ops.bonemancer.pick_bone(bone_name="hip")
+    selected = [pb.name for pb in rig.pose.bones if compat.bone_is_selected(pb)]
+    sc.bonemancer_settings.edit_layout = True
+    editing = layout_view()
+    got = (shown, locked, picked, selected, editing, layout_edits(), layout_cells(rig))
+    sc.bonemancer_settings.edit_layout = False
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return (got == ((["layout_locked", "pick_bone"], []), ({'CANCELLED'}, {'CANCELLED'}, 'OBJECT'),
+                    {'FINISHED'}, ["hip"], (["layout_locked", "pick_bone"], []),
+                    [{'CANCELLED'}] * 5, [("Body", [("hip", 0, 0)])]), got)
+check("override rig: the library's layout shows and picks; Edit Layout is locked and edits are refused cleanly",
+      override_layout)
 
 check("override rig: Bone Sets fold state is saved on the sets",
       lambda: (set_panels(rig) == ["panel_prop"], set_panels(rig)))
@@ -230,6 +303,9 @@ def reload():
     got = [(g.name, g.show_expanded, [b.bone_name for b in g.bones]) for g in r.bonemancer_sets]
     return (got == [("Lib", False, ["hip"]), ("Legs", True, ["hip", "knee"]), ("Feet", False, ["knee"])], got)
 check("override rig: sets survive save and reload", reload)
+check("override rig: the layout is still the library's after reload",
+      lambda: (layout_cells(next(o for o in bpy.data.objects if o.type == 'ARMATURE' and o.override_library))
+               == [("Body", [("hip", 0, 0)])], None))
 
 
 def ignores_after_reload():

@@ -28,6 +28,7 @@ classes = (
     layout.BONEMANCER_OT_layout_blank,
     layout.BONEMANCER_OT_hidden_cell,
     layout.BONEMANCER_OT_missing_cell,
+    layout.BONEMANCER_OT_layout_locked,
     layout.BONEMANCER_OT_place_bone,
     layout.BONEMANCER_OT_cell_menu,
     layout.BONEMANCER_OT_set_cell_side,

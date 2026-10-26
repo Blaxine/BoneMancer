@@ -2,33 +2,40 @@
 """Drawing of the Actionable Bones layout: tab bar and cell grid."""
 
 from ..core.layout import (active_bone_name, active_tab, bone_exists, bone_hidden_in_layout, cells_by_position,
-                           layout_tabs, moving_cell)
+                           layout_is_editable, layout_tabs, moving_cell)
 from ..core.selection import bone_selected_in_viewport
 from .common import hint
 
 SIDE_ICONS = {'LEFT': 'COLLECTION_COLOR_05', 'RIGHT': 'COLLECTION_COLOR_01', 'CENTER': 'COLLECTION_COLOR_03'}
 EMPTY_LAYOUT_HINT = "Lay out this rig's controls to pick them in one click."
+LOCKED_EMPTY_LAYOUT_HINT = "This rig has no layout. Add one in the rig's own file."
 
 
 def draw_layout(context, layout, rig):
     scene = context.scene
     settings = scene.bonemancer_settings
     tab = active_tab(scene, rig)
+    editable = layout_is_editable(rig)
     if tab is None:
-        hint(layout, context, EMPTY_LAYOUT_HINT)
-        layout.operator("bonemancer.new_layout_tab", icon='ADD')
+        hint(layout, context, EMPTY_LAYOUT_HINT if editable else LOCKED_EMPTY_LAYOUT_HINT)
+        if editable:
+            layout.operator("bonemancer.new_layout_tab", icon='ADD')
         return
 
     row = layout.row(align=True)
     tabs = row.row(align=True)
     for other in layout_tabs(rig):
         tabs.operator("bonemancer.show_layout_tab", text=other.name, depress=other == tab).name = other.name
-    row.prop(settings, "edit_layout", text="", icon='GREASEPENCIL', toggle=True)
+    if editable:
+        row.prop(settings, "edit_layout", text="", icon='GREASEPENCIL', toggle=True)
+    else:
+        row.operator("bonemancer.layout_locked", text="", icon='GREASEPENCIL')
 
-    moving = moving_cell(settings, rig) if settings.edit_layout else None
+    editing = settings.edit_layout and editable
+    moving = moving_cell(settings, rig) if editing else None
     if moving:
         layout.label(text=f"Click an empty cell to move {moving.bone_name}", icon='VIEW_PAN')
-    draw_grid(layout, rig, tab, settings.edit_layout, moving)
+    draw_grid(layout, rig, tab, editing, moving)
     # Cells have no text; name the bone the last click made active
     name = active_bone_name(rig)
     sub = layout.row()

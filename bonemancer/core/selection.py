@@ -167,7 +167,9 @@ def select_bone_in_viewport(context, obj, bone_name):
     if not pb:
         return f"Bone '{bone_name}' not found"
 
-    enter_pose_mode(context, obj)
+    error = enter_pose_mode(context, obj)
+    if error:
+        return error
     for p in obj.pose.bones:
         set_bone_selected(p, False)
     set_hidden(pb, False)
@@ -176,16 +178,27 @@ def select_bone_in_viewport(context, obj, bone_name):
     return ""
 
 
+POSE_LOCKED_MESSAGE = "The rig's library override isn't editable, so it can't enter Pose Mode; make it editable first"
+
+
 def enter_pose_mode(context, obj):
-    """Show obj and make it the active object in Pose Mode, unless it already is."""
+    """
+    Show obj and make it the active object in Pose Mode, unless it already is.
+    Returns an error message, or '' on success.
+    """
+    in_pose = obj.mode == 'POSE' and context.view_layer.objects.active == obj
+    # A system override (made by the API, or as a dependency) refuses mode changes
+    if not in_pose and obj.override_library and obj.override_library.is_system_override:
+        return POSE_LOCKED_MESSAGE
     obj.hide_set(False)
     obj.hide_viewport = False
-    if not (obj.mode == 'POSE' and context.view_layer.objects.active == obj):
+    if not in_pose:
         if context.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
         context.view_layer.objects.active = obj
         obj.select_set(True)
         bpy.ops.object.mode_set(mode='POSE')
+    return ""
 
 
 def toggle_bone_in_viewport(context, obj, bone_name):
@@ -214,7 +227,9 @@ def toggle_bone_in_viewport(context, obj, bone_name):
     pb = obj.pose.bones.get(bone_name)
     if not pb:
         return f"Bone '{bone_name}' not found"
-    enter_pose_mode(context, obj)
+    error = enter_pose_mode(context, obj)
+    if error:
+        return error
     add = not bone_is_selected(pb)
     set_bone_selected(pb, add)
     if add:

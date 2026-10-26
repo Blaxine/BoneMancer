@@ -53,9 +53,19 @@ def side_from_name(name):
     return 'LEFT' if name[i] in "Ll" else 'RIGHT'
 
 
+LAYOUT_LOCKED_MESSAGE = "The layout belongs to the rig's file; open it there to edit"
+
+
 def layout_is_editable(arm_obj):
     """Only a rig in its own file: on an override the layout comes from the library file."""
     return arm_obj is not None and arm_obj.library is None and arm_obj.override_library is None
+
+
+def layout_edit_refusal(arm_obj):
+    """Why arm_obj's layout can't be edited, or '' if it can."""
+    if arm_obj is None:
+        return "Pick an armature first"
+    return "" if layout_is_editable(arm_obj) else LAYOUT_LOCKED_MESSAGE
 
 
 def bone_hidden_in_layout(arm_obj, bone_name):

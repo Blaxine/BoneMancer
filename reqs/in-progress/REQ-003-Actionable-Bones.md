@@ -325,9 +325,9 @@ layout, picks bones, and refuses Edit Layout.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S018 | S | Edit Layout posture | Edit Layout and every layout-editing operator refuse on linked or overridden rigs with the tooltip text as the message. | S013 | `bonemancer/operators/`, `bonemancer/core/utils.py` |
-|  | S019 | U | Read-only states | Disabled toggle with tooltip; read-only empty-layout hint. | S018 | `bonemancer/ui/panels.py` |
-|  | S020 | T | Extend library suite | Library rig with a layout; override shows it, picks select, editing refused without traceback, layout unchanged after save + reload; linked rig pick reports the linked message. | S019 | `tests/test_library.py` |
+| ✅ | S018 | S | Edit Layout posture | Edit Layout and every layout-editing operator refuse on linked or overridden rigs with the tooltip text as the message. | S013 | `bonemancer/operators/`, `bonemancer/core/utils.py` |
+| ✅ | S019 | U | Read-only states | Disabled toggle with tooltip; read-only empty-layout hint. | S018 | `bonemancer/ui/panels.py` |
+| ✅ | S020 | T | Extend library suite | Library rig with a layout; override shows it, picks select, editing refused without traceback, layout unchanged after save + reload; linked rig pick reports the linked message. | S019 | `tests/test_library.py` |
 
 ### Slice 5 — Body and Hands Rigify templates
 
@@ -496,3 +496,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | 2026-10-26 | Blaxine | Slice 1 implemented. Empty cells are a disabled no-op button (labels squeezed the cell buttons); cell buttons have no per-bone `description()` (it stops `depress` drawing), so the panel names the active bone under the grid instead of a tooltip. Q4 resolved. |
 | 2026-10-26 | Blaxine | Slice 2 implemented. Q3 resolved: solo needs no extra rule. Ctrl/Alt acting as a plain click is not covered by a test (a background run can't send a click event); check it by hand. |
 | 2026-10-26 | Blaxine | Slice 3 implemented. A filled cell's menu is a popup from a cell button, not a menu button (those draw a dropdown arrow in the grid). A move is also dropped by switching tab, turning Edit Layout off or clearing the moved cell. |
+| 2026-10-26 | Blaxine | Slice 4 implemented. Correction: a system (non-editable) library override can't enter Pose Mode, so picking there, from a cell or the Bones panel, now refuses with a message instead of a traceback. |

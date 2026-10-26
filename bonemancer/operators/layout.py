@@ -4,10 +4,10 @@
 import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 
-from ..core.layout import (active_bone_name, bone_hidden_in_layout, cell_at, clear_move, find_tab, moving_cell,
-                           place_bone)
+from ..core.layout import (LAYOUT_LOCKED_MESSAGE, active_bone_name, bone_hidden_in_layout, cell_at, clear_move,
+                           find_tab, layout_edit_refusal, moving_cell, place_bone)
 from ..core.selection import select_bone_in_viewport, toggle_bone_in_viewport
-from ..core.utils import get_rig, rig_is_editable, tag_addon_panels
+from ..core.utils import get_rig, tag_addon_panels
 from ..ui.layout import draw_cell_menu
 
 
@@ -39,11 +39,11 @@ class BONEMANCER_OT_pick_bone(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class InertCell:
+class InertButton:
     """
-    A cell button that can't be clicked. Labels or sub-layouts in the grid
-    squeeze the real buttons out of shape; a never-enabled button keeps every
-    cell the same width, and draws greyed.
+    A button that can't be clicked, drawn greyed with its own tooltip. In the
+    grid, labels or sub-layouts squeeze the real buttons out of shape; a
+    never-enabled button keeps every cell the same width.
     """
     bl_options = {'INTERNAL'}
 
@@ -55,22 +55,29 @@ class InertCell:
         return {'CANCELLED'}
 
 
-class BONEMANCER_OT_layout_blank(InertCell, bpy.types.Operator):
+class BONEMANCER_OT_layout_blank(InertButton, bpy.types.Operator):
     bl_idname = "bonemancer.layout_blank"
     bl_label = "Empty Cell"
     bl_description = "Empty cell"
 
 
-class BONEMANCER_OT_hidden_cell(InertCell, bpy.types.Operator):
+class BONEMANCER_OT_hidden_cell(InertButton, bpy.types.Operator):
     bl_idname = "bonemancer.hidden_cell"
     bl_label = "Hidden Bone"
     bl_description = "This bone is hidden. Show it, or its bone collection, to pick it"
 
 
-class BONEMANCER_OT_missing_cell(InertCell, bpy.types.Operator):
+class BONEMANCER_OT_missing_cell(InertButton, bpy.types.Operator):
     bl_idname = "bonemancer.missing_cell"
     bl_label = "Missing Bone"
     bl_description = "This cell's bone no longer exists. Turn on Edit Layout to clear it"
+
+
+class BONEMANCER_OT_layout_locked(InertButton, bpy.types.Operator):
+    """Stands in for the Edit Layout toggle on linked and overridden rigs."""
+    bl_idname = "bonemancer.layout_locked"
+    bl_label = "Edit Layout"
+    bl_description = LAYOUT_LOCKED_MESSAGE
 
 
 class BONEMANCER_OT_place_bone(bpy.types.Operator):
@@ -84,8 +91,9 @@ class BONEMANCER_OT_place_bone(bpy.types.Operator):
 
     def execute(self, context):
         rig = get_rig(context.scene)
-        if not rig_is_editable(rig):
-            self.report({'WARNING'}, "Pick an editable armature first")
+        refusal = layout_edit_refusal(rig)
+        if refusal:
+            self.report({'WARNING'}, refusal)
             return {'CANCELLED'}
         tab = find_tab(rig, self.tab)
         if tab is None or not (0 <= self.row < tab.rows and 0 <= self.column < tab.columns):
@@ -109,8 +117,9 @@ class CellOperator:
     def editable_tab(self, context):
         """The tab, or None after reporting why it can't be edited."""
         rig = get_rig(context.scene)
-        if not rig_is_editable(rig):
-            self.report({'WARNING'}, "Pick an editable armature first")
+        refusal = layout_edit_refusal(rig)
+        if refusal:
+            self.report({'WARNING'}, refusal)
             return None
         tab = find_tab(rig, self.tab)
         if tab is None or not (0 <= self.row < tab.rows and 0 <= self.column < tab.columns):
@@ -248,8 +257,9 @@ class BONEMANCER_OT_new_layout_tab(bpy.types.Operator):
 
     def execute(self, context):
         rig = get_rig(context.scene)
-        if not rig_is_editable(rig):
-            self.report({'WARNING'}, "Pick an editable armature first")
+        refusal = layout_edit_refusal(rig)
+        if refusal:
+            self.report({'WARNING'}, refusal)
             return {'CANCELLED'}
         name = self.name.strip()
         if not name:
