@@ -47,6 +47,10 @@ def place(bone, row, column, tab="Body"):
     return op("place_bone", tab=tab, row=row, column=column)
 
 
+def cell_op(idname, row, column, tab="Body", **kw):
+    return op(idname, tab=tab, row=row, column=column, **kw)
+
+
 def cells(rig, tab="Body"):
     return sorted((c.bone_name, c.row, c.column, c.side) for c in layout.find_tab(rig, tab).cells)
 
@@ -104,6 +108,60 @@ def show_tab():
     fallback = layout.active_tab(sc, rig).name
     return ((shown, fallback) == ("Body", "Body"), (shown, fallback))
 check("the tab bar switches tabs; an unknown tab falls back to the first", show_tab)
+
+
+def tab_names(rig):
+    return [t.name for t in rig.bonemancer_layout]
+
+
+def renaming_tabs():
+    rig = fresh()
+    op("apply_layout_template")
+    place("arm.L", 3, 2)
+    settings = sc.bonemancer_settings
+    settings.edit_layout = True
+    cell_op("start_move", 3, 2)
+    got = (op("rename_layout_tab", new_name="  Torso "), tab_names(rig), settings.layout_tab, settings.move_tab,
+           layout.find_tab(rig, "Torso").template, cells(rig, "Torso"),
+           op("rename_layout_tab", name="Hands", new_name="Torso"), op("rename_layout_tab", new_name=" "),
+           op("rename_layout_tab", name="Nope", new_name="X"), op("rename_layout_tab", name="Hands", new_name="Fingers"),
+           tab_names(rig), settings.layout_tab)
+    return (got == ({'FINISHED'}, ["Torso", "Hands"], "Torso", "Torso", "RIGIFY_BODY",
+                    [("arm.L", 3, 2, 'LEFT'), ("root", 22, 7, 'CENTER')],
+                    {'CANCELLED'}, {'CANCELLED'}, {'CANCELLED'}, {'FINISHED'}, ["Torso", "Fingers"], "Torso"), got)
+check("Rename Tab renames the shown tab or a named one, keeping its cells; blank names and clashes are refused",
+      renaming_tabs)
+
+
+def removing_tabs():
+    rig = fresh()
+    new_tab()
+    new_tab(name="Hands")
+    new_tab(name="Tail")
+    op("show_layout_tab", name="Hands")
+    settings = sc.bonemancer_settings
+    got = (op("remove_layout_tab"), tab_names(rig), settings.layout_tab,
+           op("remove_layout_tab", name="Tail"), tab_names(rig), settings.layout_tab,
+           op("remove_layout_tab", name="Nope"), op("remove_layout_tab"), tab_names(rig), settings.layout_tab,
+           sorted(b.name for b in rig.data.bones) == sorted(BONES))
+    return (got == ({'FINISHED'}, ["Body", "Tail"], "Body", {'FINISHED'}, ["Body"], "Body", {'CANCELLED'},
+                    {'FINISHED'}, [], "", True), got)
+check("Remove Tab removes the shown tab or a named one and shows the first; the bones stay", removing_tabs)
+
+
+def tab_menu():
+    fresh()
+    new_tab()
+    settings = sc.bonemancer_settings
+    closed = [d.args[0] for d in draw().drawn("menu")]
+    settings.edit_layout = True
+    opened = [d.args[0] for d in draw().drawn("menu")]
+    items = [d.args[0] for d in record(bpy.types.BONEMANCER_MT_layout_tab.draw, bpy.context).drawn("operator")]
+    got = (closed, opened, items)
+    return (got == ([], ["BONEMANCER_MT_layout_tab"],
+                    ["bonemancer.new_layout_tab", "bonemancer.rename_layout_tab", "bonemancer.remove_layout_tab",
+                     "bonemancer.apply_layout_template"]), got)
+check("the tab menu shows while Edit Layout is on: New, Rename, Remove Tab and Apply Rigify Template", tab_menu)
 
 
 # ---------------------------------------------------------------- placing
@@ -304,10 +362,6 @@ check("the grid draws one button per placed bone, pressed while selected; Edit L
 
 
 # ---------------------------------------------------------------- editing
-
-def cell_op(idname, row, column, tab="Body", **kw):
-    return op(idname, tab=tab, row=row, column=column, **kw)
-
 
 def side_defaults():
     rig = fresh()

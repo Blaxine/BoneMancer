@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Drawing of the Actionable Bones layout: tab bar and cell grid."""
 
+import bpy
+
 from ..core.layout import (active_bone_name, active_tab, bone_exists, bone_hidden_in_layout, cells_by_position,
                            layout_is_editable, layout_tabs, moving_cell)
 from ..core.selection import bone_selected_in_viewport
@@ -10,6 +12,18 @@ from .common import hint
 SIDE_ICONS = {'LEFT': 'COLLECTION_COLOR_05', 'RIGHT': 'COLLECTION_COLOR_01', 'CENTER': 'COLLECTION_COLOR_03'}
 EMPTY_LAYOUT_HINT = "Lay out this rig's controls to pick them in one click."
 LOCKED_EMPTY_LAYOUT_HINT = "This rig has no layout. Add one in the rig's own file."
+
+
+class BONEMANCER_MT_layout_tab(bpy.types.Menu):
+    bl_label = "Layout Tabs"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator("bonemancer.new_layout_tab", icon='ADD')
+        layout.operator("bonemancer.rename_layout_tab", icon='GREASEPENCIL')
+        layout.operator("bonemancer.remove_layout_tab", icon='REMOVE')
+        layout.separator()
+        layout.operator("bonemancer.apply_layout_template", icon='OUTLINER_OB_ARMATURE')
 
 
 def draw_layout(context, layout, rig):
@@ -30,6 +44,8 @@ def draw_layout(context, layout, rig):
     for other in layout_tabs(rig):
         tabs.operator("bonemancer.show_layout_tab", text=other.name, depress=other == tab).name = other.name
     if editable:
+        if settings.edit_layout:
+            row.menu("BONEMANCER_MT_layout_tab", text="", icon='DOWNARROW_HLT')
         row.prop(settings, "edit_layout", text="", icon='GREASEPENCIL', toggle=True)
     else:
         row.operator("bonemancer.layout_locked", text="", icon='GREASEPENCIL')

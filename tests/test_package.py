@@ -34,7 +34,7 @@ def manifest():
 def manifest_fields():
     m = manifest()
     got = (m["id"], m["version"], m["blender_version_min"], m["license"], len(m["tagline"]) <= 64, m.get("website"))
-    return (got == ("bonemancer", "1.1.0", "4.2.0", ["SPDX:GPL-3.0-or-later"], True,
+    return (got == ("bonemancer", "1.2.0", "4.2.0", ["SPDX:GPL-3.0-or-later"], True,
                     "https://github.com/Blaxine/BoneMancer"), got)
 check("manifest fields", manifest_fields)
 
@@ -44,7 +44,7 @@ def validate():
     return (code == 0, out[-500:])
 check("extension validate", validate)
 
-zip_path = os.path.join(work, "bonemancer-1.1.0.zip")
+zip_path = os.path.join(work, "bonemancer-1.2.0.zip")
 
 
 def build():

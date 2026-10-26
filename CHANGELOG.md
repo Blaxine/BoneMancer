@@ -6,7 +6,21 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0]
+
 ### Added
+
+- **Actionable Bones** panel: select a rig's controls by clicking buttons laid
+  out like the character, with Shift+click to add or remove. Cells show
+  pressed for selected bones, greyed for hidden ones, and blue / red / yellow
+  for left, right and centre controls.
+- **Apply Rigify Template** lays out a generated Rigify human's body and hand
+  controls on Body and Hands tabs over a grey silhouette. Applying again only
+  fills empty cells.
+- **Edit Layout**: place the viewport's active bone in a cell, recolour, move
+  and clear cells, and add, rename and remove tabs of your own. The layout is
+  saved on the rig and follows bone renames; overridden rigs show the layout
+  from their own file.
 
 - **Bones** highlights every bone selected in the viewport, and **Add Selected
   to a Bone Set** adds all of them at once.
@@ -21,8 +35,8 @@ follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Redesigned sidebar: five panels (Rig, Bones, Bone Sets, Rig Check, Shape
-  Keys), names instead of rows of icons, labelled actions, and empty panels
+- Redesigned sidebar: six panels (Rig, Actionable Bones, Bones, Bone Sets,
+  Rig Check, Shape Keys), names instead of rows of icons, labelled actions, and empty panels
   that say what to do next. Rig Check explanations show in the panel instead
   of a dialog.
 - The Shape Keys list keeps itself up to date as shape keys and skinned meshes
@@ -30,8 +44,13 @@ follow [Semantic Versioning](https://semver.org/).
 - The add-on's code is organised into modules (`core/`, `operators/`, `ui/`)
   instead of one file. Behaviour and saved data are unchanged.
 
+- **Bones** starts closed; Actionable Bones takes its place as the way to pick
+  bones.
+
 ### Fixed
 
+- Picking a bone on a library override that isn't editable reports why
+  instead of failing.
 - Switching a property to Integer in Edit Property no longer fails with
   "max_int value not in 'int' range".
 

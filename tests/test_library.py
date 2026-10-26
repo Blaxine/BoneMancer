@@ -157,7 +157,9 @@ def layout_edits():
             refusal(lambda: bpy.ops.bonemancer.set_cell_side(side='LEFT', **cell)),
             refusal(lambda: bpy.ops.bonemancer.start_move(**cell)),
             refusal(lambda: bpy.ops.bonemancer.clear_cell(**cell)),
-            refusal(lambda: bpy.ops.bonemancer.apply_layout_template())]
+            refusal(lambda: bpy.ops.bonemancer.apply_layout_template()),
+            refusal(lambda: bpy.ops.bonemancer.rename_layout_tab(new_name="Mine")),
+            refusal(lambda: bpy.ops.bonemancer.remove_layout_tab())]
 
 
 def linked_layout():
@@ -170,7 +172,7 @@ def linked_layout():
     finally:
         pick(None)
         sc.collection.objects.unlink(linked)
-    return (got == ((["layout_locked", "pick_bone"], []), {'CANCELLED'}, [{'CANCELLED'}] * 6,
+    return (got == ((["layout_locked", "pick_bone"], []), {'CANCELLED'}, [{'CANCELLED'}] * 8,
                     [("Body", [("hip", 0, 0)])]), got)
 check("linked rig: the library's layout shows read-only; picking and editing are refused", linked_layout)
 
@@ -218,7 +220,7 @@ def override_layout():
     bpy.ops.object.mode_set(mode='OBJECT')
     return (got == ((["layout_locked", "pick_bone"], []), ({'CANCELLED'}, {'CANCELLED'}, 'OBJECT'),
                     {'FINISHED'}, ["hip"], (["layout_locked", "pick_bone"], []),
-                    [{'CANCELLED'}] * 6, [("Body", [("hip", 0, 0)])]), got)
+                    [{'CANCELLED'}] * 8, [("Body", [("hip", 0, 0)])]), got)
 check("override rig: the library's layout shows and picks; Edit Layout is locked and edits are refused cleanly",
       override_layout)
 

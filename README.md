@@ -9,8 +9,8 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
 
 ## Features
 
-- **A calm sidebar.** Five panels, top to bottom in the order you use them:
-  Rig, Bones, Bone Sets, Rig Check and Shape Keys. Rows show names, not rows of
+- **A calm sidebar.** Six panels, top to bottom in the order you use them:
+  Rig, Actionable Bones, Bones, Bone Sets, Rig Check and Shape Keys. Rows show names, not rows of
   icons: actions are labelled buttons that appear for the bone or issue you're
   on, and empty panels say what to do next.
 - **Rig.** Choose the armature to work on, or just click one in the viewport:
@@ -18,6 +18,15 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
   Pose Mode (only from Object, Pose or armature Edit Mode, so a sculpt or paint
   session isn't interrupted). **In Front** draws the rig over its meshes (the
   same option as Object Properties > Viewport Display > In Front).
+- **Actionable Bones.** Pick a rig's controls in one click from buttons laid
+  out like the character, as in Maya's bone pickers. Click a cell to select
+  its bone (Shift+click adds or removes it); cells of selected bones show
+  pressed, hidden bones are greyed, and cells are blue, red or yellow for left,
+  right and centre. **Apply Rigify Template** lays out a generated Rigify
+  human's body and hand controls over a grey silhouette in one click; turn on
+  **Edit Layout** (the pencil) to place the viewport's active bone in an empty
+  cell, recolour, move or clear cells, and add tabs of your own for tails,
+  props or anything else. The layout is saved on the rig.
 - **Bones.** Every bone of the rig. Click a bone to select it in the viewport;
   bones selected in the viewport are highlighted, and **Add Selected to a Bone
   Set** puts all of them into a new or existing set in one go. **Rename** and
@@ -61,7 +70,8 @@ Requires Blender 4.2 or later. Free and open source under GPL-3.0-or-later.
   care about can be ignored per rig, and fixed ones grey out as you go.
 - **Library overrides.** Bone sets can be edited on an overridden rig. Renames
   and new custom properties are refused there, because Blender doesn't keep
-  them; a rig linked without an override is read-only.
+  them; a rig linked without an override is read-only. An overridden rig shows
+  the Actionable Bones layout made in its own file; edit the layout there.
 
 Files saved with earlier versions of Bone Mancer are upgraded automatically
 when opened.
@@ -81,14 +91,18 @@ The panels are in the 3D Viewport sidebar (N), tab **Bonemancer**.
 ## Quick start
 
 1. Open the **Bonemancer** tab and pick your rig in **Rig**.
-2. In **Bone Sets**, click **Import Bone Collections**, untick the collections
+2. On a Rigify rig, click **Apply Rigify Template** in **Actionable Bones**, then
+   click a cell to select its control. On any rig, turn on **Edit Layout**,
+   click **New Tab**, select a bone in the viewport and click an empty cell to
+   place it.
+3. In **Bone Sets**, click **Import Bone Collections**, untick the collections
    you don't animate with (for example ORG / DEF / MCH on a Rigify rig), and
    click OK.
-3. Open a set to select its bones or hide them; open a bone for its custom
+4. Open a set to select its bones or hide them; open a bone for its custom
    properties and constraints.
-4. Select bones in the viewport, then click **Add Selected to a Bone Set** in
+5. Select bones in the viewport, then click **Add Selected to a Bone Set** in
    **Bones** to put them into a new or existing set.
-5. Open **Rig Check** and click **Check Rig** to find broken constraints,
+6. Open **Rig Check** and click **Check Rig** to find broken constraints,
    drivers, weights and setup mistakes; click a result to see how to fix it.
 
 ## Reporting bugs

@@ -15,9 +15,9 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
 - [ ] The add-on appears as "Bone Mancer: Rig Central" with the right version,
       tagline and website link.
 - [ ] The **Bonemancer** tab appears in the 3D Viewport sidebar with the Rig,
-      Bones, Bone Sets, Rig Check and Shape Keys panels, in that order. On a
-      first run Rig, Bones and Bone Sets are open; Rig Check and Shape Keys are
-      closed.
+      Actionable Bones, Bones, Bone Sets, Rig Check and Shape Keys panels, in
+      that order. On a first run Rig, Actionable Bones and Bone Sets are open;
+      Bones, Rig Check and Shape Keys are closed.
 
 ## Sidebar layout
 
@@ -61,6 +61,43 @@ from a terminal with `BLENDER_USER_RESOURCES` set to an empty temp folder.
 - [ ] Rename: each mode (Exact / Prefix / Suffix / Replace) updates the preview
       live; the driver and constraint counts look right; an existing name shows
       an error in the preview and OK does nothing.
+
+## Actionable Bones
+
+- [ ] On a rig with no layout the panel says "Lay out this rig's controls to
+      pick them in one click." with **Apply Rigify Template** and **New Tab**.
+- [ ] Add > Armature > Human (Meta-Rig), Generate Rig, pick the generated rig,
+      click **Apply Rigify Template**: Body and Hands tabs appear over grey
+      silhouettes, the info line says how many controls were placed, and no
+      tweak control is on them. Clicking it again places 0.
+- [ ] Clicking a cell selects only its bone and makes it active (Object Mode
+      enters Pose Mode); the panel names the active bone under the grid. Ctrl+Z
+      undoes each click.
+- [ ] Shift+click adds a cell's bone to the selection, Shift+click again
+      removes it; Ctrl+click and Alt+click act like a plain click. The same in
+      armature Edit Mode.
+- [ ] Cells of selected bones show pressed, also after selecting in the
+      viewport. Left cells are blue, right red, centre yellow, in the default
+      theme and in a light theme.
+- [ ] Hide a bone (H), or hide its bone collection, or solo another bone
+      collection: its cell greys out and clicking it does nothing.
+- [ ] Turn on **Edit Layout** (pencil): empty cells become buttons. Select a
+      bone in the viewport and click an empty cell: it's placed, coloured by its
+      name's side. Click it again elsewhere on the tab: it moves there.
+- [ ] Click a filled cell in Edit Layout: a menu offers Left, Right, Centre,
+      Move and Clear. Move shows "Click an empty cell to move <bone>"; clicking
+      an empty cell moves it, clicking the cell itself cancels.
+- [ ] The tab menu (arrow next to the pencil) adds, renames and removes tabs
+      (Remove asks first) and applies the template.
+- [ ] Rename a placed bone with **Rename**, and with F2: its cells follow on
+      every tab. Delete one in Edit Mode: its cell shows a warning icon.
+- [ ] Save, reopen: the layout is back and Edit Layout is off. Pick another rig
+      and back: Edit Layout is off.
+- [ ] Link the rig from another file with a library override: the layout made
+      in that file shows, clicking cells selects, the pencil is greyed with the
+      tooltip "The layout belongs to the rig's file; open it there to edit".
+- [ ] Cells stay square enough to click at the default sidebar width and when
+      the sidebar is dragged narrow or wide.
 
 ## Bone Sets
 

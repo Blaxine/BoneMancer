@@ -350,13 +350,13 @@ fills Body and Hands tabs over silhouettes, and applying again changes nothing.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S025 | S | Tab management | New Tab dialog (name, columns, rows), Rename Tab, Remove Tab with confirm; active tab falls back to the first. | S002 | `bonemancer/operators/` |
-|  | S026 | U | Tab menu | Tab menu in the header row while Edit Layout is on. | S025 | `bonemancer/ui/` |
-|  | S027 | T | Extend suite | Add / rename / remove / switch; removing the active tab; name clashes refused. | S026 | `tests/test_actionable_bones.py` |
-|  | S028 | D | Glossary | Add Actionable Bones, Layout, Layout tab, Cell, Edit Layout, Layout template. | S026 | `reqs/GLOSSARY.md` |
-|  | S029 | D | README, checklist, changelog | README feature + quick-start step; manual checklist section (click, Shift, hidden, edit, templates, overrides, themes, sidebar widths); CHANGELOG `[1.2.0]`. | S026 | `README.md`, `tests/MANUAL_CHECKLIST.md`, `CHANGELOG.md` |
-|  | S030 | F | Version 1.2.0 | Manifest `1.2.0`; package suite pin. | S029 | `bonemancer/blender_manifest.toml`, `tests/test_package.py` |
-|  | S031 | T | Release run | Full runner on 4.5 and 5.2; zip builds and installs; sidebar screenshot at default and wide widths. | S030 | — |
+| ✅ | S025 | S | Tab management | New Tab dialog (name, columns, rows), Rename Tab, Remove Tab with confirm; active tab falls back to the first. | S002 | `bonemancer/operators/` |
+| ✅ | S026 | U | Tab menu | Tab menu in the header row while Edit Layout is on. | S025 | `bonemancer/ui/` |
+| ✅ | S027 | T | Extend suite | Add / rename / remove / switch; removing the active tab; name clashes refused. | S026 | `tests/test_actionable_bones.py` |
+| ✅ | S028 | D | Glossary | Add Actionable Bones, Layout, Layout tab, Cell, Edit Layout, Layout template. | S026 | `reqs/GLOSSARY.md` |
+| ✅ | S029 | D | README, checklist, changelog | README feature + quick-start step; manual checklist section (click, Shift, hidden, edit, templates, overrides, themes, sidebar widths); CHANGELOG `[1.2.0]`. | S026 | `README.md`, `tests/MANUAL_CHECKLIST.md`, `CHANGELOG.md` |
+| ✅ | S030 | F | Version 1.2.0 | Manifest `1.2.0`; package suite pin. | S029 | `bonemancer/blender_manifest.toml`, `tests/test_package.py` |
+| ✅ | S031 | T | Release run | Full runner on 4.5 and 5.2; zip builds and installs; sidebar screenshot at default and wide widths. | S030 | — |
 
 ### Slice 7 — Face template (1.2.1)
 
@@ -498,3 +498,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | 2026-10-26 | Blaxine | Slice 3 implemented. A filled cell's menu is a popup from a cell button, not a menu button (those draw a dropdown arrow in the grid). A move is also dropped by switching tab, turning Edit Layout off or clearing the moved cell. |
 | 2026-10-26 | Blaxine | Slice 4 implemented. Correction: a system (non-editable) library override can't enter Pose Mode, so picking there, from a cell or the Bones panel, now refuses with a message instead of a traceback. |
 | 2026-10-26 | Blaxine | Slice 5 implemented. Q5 resolved: Hands and Face are 16 columns wide, not 20. A tab named like a template that was made by hand keeps its size and gets no silhouette. Apply Rigify Template sits in the empty state; the tab menu entry comes with the tab menu in slice 6. |
+| 2026-10-26 | Blaxine | Slice 6 implemented; manifest 1.2.0. The 1.2.0 zip builds, installs and enables in a clean user folder (4.5). Screenshots taken at the default sidebar width only: Blender has no API to widen the sidebar, so the wide and narrow checks are in the manual checklist. |

@@ -38,5 +38,7 @@ classes = (
     layout.BONEMANCER_OT_move_cell,
     layout.BONEMANCER_OT_apply_layout_template,
     layout.BONEMANCER_OT_new_layout_tab,
+    layout.BONEMANCER_OT_rename_layout_tab,
+    layout.BONEMANCER_OT_remove_layout_tab,
     layout.BONEMANCER_OT_show_layout_tab,
 )
