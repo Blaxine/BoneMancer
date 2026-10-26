@@ -301,6 +301,155 @@ check("the grid draws one button per placed bone, pressed while selected; Edit L
       "place buttons", grid_drawing)
 
 
+# ---------------------------------------------------------------- editing
+
+def cell_op(idname, row, column, tab="Body", **kw):
+    return op(idname, tab=tab, row=row, column=column, **kw)
+
+
+def side_defaults():
+    rig = fresh()
+    for name in ("thigh_R", "Left_toe", "neck"):
+        bpy.ops.object.mode_set(mode='EDIT')
+        rig.data.edit_bones.new(name).tail = (0, 0, 1)
+        bpy.ops.object.mode_set(mode='OBJECT')
+    new_tab()
+    for i, name in enumerate(("arm.L", "hand.R", "thigh_R", "Left_toe", "neck")):
+        place(name, 0, i)
+    return (cells(rig) == [("Left_toe", 0, 3, 'LEFT'), ("arm.L", 0, 0, 'LEFT'), ("hand.R", 0, 1, 'RIGHT'),
+                           ("neck", 0, 4, 'CENTER'), ("thigh_R", 0, 2, 'RIGHT')], cells(rig))
+check("a placed bone's side comes from its name: .L, _R, Left_ and unmirrored names", side_defaults)
+
+
+def once_per_tab():
+    rig = fresh()
+    new_tab()
+    new_tab(name="Hands")
+    place("arm.L", 3, 2)
+    place("arm.L", 5, 5)
+    place("arm.L", 1, 1, tab="Hands")
+    got = (cells(rig), cells(rig, "Hands"))
+    return (got == ([("arm.L", 5, 5, 'LEFT')], [("arm.L", 1, 1, 'LEFT')]), got)
+check("placing a bone already on the tab moves it; another tab can hold it too", once_per_tab)
+
+
+def recolour_and_clear():
+    rig = fresh()
+    new_tab()
+    place("arm.L", 3, 2)
+    place("spine", 2, 7)
+    got = (cell_op("set_cell_side", 3, 2, side='RIGHT'), cell_op("clear_cell", 2, 7),
+           cell_op("clear_cell", 9, 9), cell_op("set_cell_side", 9, 9, side='LEFT'), cells(rig),
+           sorted(b.name for b in rig.data.bones))
+    return (got == ({'FINISHED'}, {'FINISHED'}, {'CANCELLED'}, {'CANCELLED'}, [("arm.L", 3, 2, 'RIGHT')],
+                    sorted(BONES)), got)
+check("a cell can be recoloured and cleared, keeping the bone; empty cells are refused", recolour_and_clear)
+
+
+def moving():
+    rig = fresh()
+    new_tab()
+    place("arm.L", 3, 2)
+    place("spine", 2, 7)
+    cell_op("set_cell_side", 3, 2, side='CENTER')
+    settings = sc.bonemancer_settings
+    got = (cell_op("start_move", 3, 2), layout.moving_cell(settings, rig).bone_name,
+           cell_op("move_cell", 2, 7),                       # taken
+           cell_op("move_cell", 6, 6), cells(rig), settings.move_tab,
+           cell_op("move_cell", 0, 0))                       # nothing picked up
+    return (got == ({'FINISHED'}, "arm.L", {'CANCELLED'}, {'FINISHED'},
+                    [("arm.L", 6, 6, 'CENTER'), ("spine", 2, 7, 'CENTER')], "", {'CANCELLED'}), got)
+check("Move picks a cell up and the next empty cell takes it, side kept; taken cells are refused", moving)
+
+
+def cancel_move():
+    rig = fresh()
+    new_tab()
+    new_tab(name="Hands")
+    op("show_layout_tab", name="Body")
+    place("arm.L", 3, 2)
+    settings = sc.bonemancer_settings
+    got = []
+    for undo in (lambda: op("cancel_move"), lambda: op("show_layout_tab", name="Hands"),
+                 lambda: setattr(settings, "edit_layout", False), lambda: cell_op("clear_cell", 3, 2)):
+        op("show_layout_tab", name="Body")
+        settings.edit_layout = True
+        if not cells(rig):
+            place("arm.L", 3, 2)
+        cell_op("start_move", 3, 2)
+        undo()
+        got.append(settings.move_tab)
+    return (got == [""] * 4, got)
+check("a move is dropped by clicking its cell again, switching tab, leaving Edit Layout or clearing the cell",
+      cancel_move)
+
+
+def session_reset():
+    global sc
+    rig = fresh()
+    new_tab()
+    place("arm.L", 3, 2)
+    settings = sc.bonemancer_settings
+    settings.edit_layout = True
+    cell_op("start_move", 3, 2)
+    other = make_arm("Other", ("a",))
+    pick(other)
+    after_pick = (settings.edit_layout, settings.move_tab)
+    bpy.context.view_layer.objects.active = rig    # or the handler picks Other again
+    pick(rig)
+    settings.edit_layout = True
+    cell_op("start_move", 3, 2)
+    before_save = (settings.edit_layout, settings.move_tab)
+    path = os.path.join(tmp_dir(), "session.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=path)
+    bpy.ops.wm.open_mainfile(filepath=path)
+    sc = bpy.context.scene
+    settings = sc.bonemancer_settings
+    got = (after_pick, before_save, (settings.edit_layout, settings.move_tab))
+    return (got == ((False, ""), (True, "Body"), (False, "")), got)
+check("Edit Layout and a pending move are off after picking another rig and after reopening", session_reset)
+
+
+def edit_drawing():
+    rig = fresh()
+    new_tab(columns=4, rows=4)
+    place("arm.L", 0, 0)
+    place("spine", 1, 1)
+    bpy.ops.object.mode_set(mode='EDIT')
+    rig.data.edit_bones.remove(rig.data.edit_bones["spine"])
+    bpy.ops.object.mode_set(mode='OBJECT')
+    settings = sc.bonemancer_settings
+    settings.edit_layout = True
+
+    def ops(view):
+        return [(d.args[0].split(".")[1], d.kwargs.get("icon")) for d in view.drawn("operator")
+                if d.args[0] not in ("bonemancer.show_layout_tab",)]
+    editing = ops(draw())
+    cell_op("start_move", 0, 0)
+    view = draw()
+    moving = ops(view)
+    line = [t for t in view.texts("label") if "move" in t]
+    got = (editing[:2], editing.count(("place_bone", 'BLANK1')), editing[5],
+           moving[0], moving.count(("move_cell", 'BLANK1')), line)
+    return (got == ([("cell_menu", 'COLLECTION_COLOR_05'), ("place_bone", 'BLANK1')], 14, ("cell_menu", 'ERROR'),
+                    ("cancel_move", 'COLLECTION_COLOR_05'), 14, ["Click an empty cell to move arm.L"]), got)
+check("in Edit Layout filled cells open their menu, missing ones too; a move shows its line and turns blanks "
+      "into move targets", edit_drawing)
+
+
+def cell_menu_drawing():
+    rig = fresh()
+    new_tab()
+    place("arm.L", 3, 2)
+    from bonemancer.ui.layout import draw_cell_menu
+    tab = layout.find_tab(rig, "Body")
+    view = record(lambda panel, _ctx: draw_cell_menu(panel.layout, tab, tab.cells[0]), bpy.context)
+    got = [(d.args[0].split(".")[1], d.text) for d in view.drawn("operator")]
+    return (got == [("set_cell_side", "Left"), ("set_cell_side", "Right"), ("set_cell_side", "Centre"),
+                    ("start_move", "Move"), ("clear_cell", "Clear")], got)
+check("a filled cell's menu offers Left, Right, Centre, Move and Clear", cell_menu_drawing)
+
+
 # ---------------------------------------------------------------- saving
 
 def survives_reload():

@@ -4,6 +4,7 @@
 import bpy
 from bpy.app.handlers import persistent
 
+from .core.layout import reset_layout_session
 from .core.migration import migrate_legacy_data
 from .core.selection import follow_viewport_rig, sync_selected_bone, update_bone_list
 from .core.shape_keys import refresh_shape_keys
@@ -61,6 +62,8 @@ def safely_register_handlers(handlers):
 @persistent
 def on_load_post(dummy):
     migrate_legacy_data()
+    for scene in bpy.data.scenes:
+        reset_layout_session(scene.bonemancer_settings)
 
 
 load_post_handlers = [on_load_post]

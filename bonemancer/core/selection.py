@@ -4,7 +4,7 @@
 import bpy
 
 from .compat import bone_is_selected, is_hidden, set_bone_selected, set_hidden
-from .layout import rename_layout_cells
+from .layout import rename_layout_cells, reset_layout_session
 from .renaming import rename_set_entries
 from .rig_check import clear_rig_check, rename_ignore_entries
 from .shape_keys import scan_shape_keys_for_armature
@@ -283,8 +283,9 @@ def on_armature_change(self, context):
     """
     scene = self  # the Scene that owns bonemancer_rig (may differ from context.scene)
     arm_obj = get_rig(scene)
-    # Rig Check results describe the previous rig
+    # Rig Check results and layout editing belong to the previous rig
     clear_rig_check(scene)
+    reset_layout_session(scene.bonemancer_settings)
 
     # Bail if invalid
     if not arm_obj:

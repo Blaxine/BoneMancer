@@ -92,6 +92,22 @@ def rename_layout_cells(arm_obj, old_name, new_name):
                 cell.bone_name = new_name
 
 
+def moving_cell(settings, arm_obj):
+    """The cell a pending Move picked up, or None."""
+    tab = find_tab(arm_obj, settings.move_tab) if settings.move_tab else None
+    return cell_at(tab, settings.move_row, settings.move_column) if tab else None
+
+
+def clear_move(settings):
+    settings.move_tab = ""
+
+
+def reset_layout_session(settings):
+    """Edit Layout and a pending Move don't outlive the file or the picked rig."""
+    settings.edit_layout = False
+    clear_move(settings)
+
+
 def place_bone(tab, row, column, bone_name):
     """Put bone_name in the cell, moving it if it's elsewhere on the tab; returns the cell."""
     for i, cell in enumerate(tab.cells):

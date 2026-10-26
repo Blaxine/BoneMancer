@@ -2,11 +2,13 @@
 """Operators for the Actionable Bones panel."""
 
 import bpy
-from bpy.props import BoolProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 
-from ..core.layout import active_bone_name, bone_hidden_in_layout, find_tab, place_bone
+from ..core.layout import (active_bone_name, bone_hidden_in_layout, cell_at, clear_move, find_tab, moving_cell,
+                           place_bone)
 from ..core.selection import select_bone_in_viewport, toggle_bone_in_viewport
 from ..core.utils import get_rig, rig_is_editable, tag_addon_panels
+from ..ui.layout import draw_cell_menu
 
 
 class BONEMANCER_OT_pick_bone(bpy.types.Operator):
@@ -98,6 +100,140 @@ class BONEMANCER_OT_place_bone(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class CellOperator:
+    """An operator on one cell of a tab of the picked rig's layout."""
+    tab: StringProperty()
+    row: IntProperty()
+    column: IntProperty()
+
+    def editable_tab(self, context):
+        """The tab, or None after reporting why it can't be edited."""
+        rig = get_rig(context.scene)
+        if not rig_is_editable(rig):
+            self.report({'WARNING'}, "Pick an editable armature first")
+            return None
+        tab = find_tab(rig, self.tab)
+        if tab is None or not (0 <= self.row < tab.rows and 0 <= self.column < tab.columns):
+            self.report({'WARNING'}, "That cell doesn't exist")
+            return None
+        return tab
+
+    def filled_cell(self, context):
+        """The cell, or None after reporting why it can't be edited."""
+        tab = self.editable_tab(context)
+        cell = tab and cell_at(tab, self.row, self.column)
+        if tab and cell is None:
+            self.report({'WARNING'}, "That cell is empty")
+        return cell
+
+
+class BONEMANCER_OT_cell_menu(CellOperator, bpy.types.Operator):
+    bl_idname = "bonemancer.cell_menu"
+    bl_label = "Edit Cell"
+    bl_description = "Change this cell's side, move it or clear it"
+    bl_options = {'INTERNAL'}
+
+    def invoke(self, context, event):
+        cell = self.filled_cell(context)
+        if cell is None:
+            return {'CANCELLED'}
+        tab = find_tab(get_rig(context.scene), self.tab)
+        context.window_manager.popup_menu(lambda menu, _ctx: draw_cell_menu(menu.layout, tab, cell),
+                                          title=cell.bone_name, icon='BONE_DATA')
+        return {'FINISHED'}
+
+    def execute(self, context):
+        return {'CANCELLED'}   # only meaningful as a click
+
+
+class BONEMANCER_OT_set_cell_side(CellOperator, bpy.types.Operator):
+    bl_idname = "bonemancer.set_cell_side"
+    bl_label = "Set Side"
+    bl_description = "Colour this cell as a left, right or centre control"
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+    side: EnumProperty(items=[('LEFT', "Left", ""), ('RIGHT', "Right", ""), ('CENTER', "Centre", "")],
+                       default='CENTER')
+
+    def execute(self, context):
+        cell = self.filled_cell(context)
+        if cell is None:
+            return {'CANCELLED'}
+        cell.side = self.side
+        tag_addon_panels(context)
+        return {'FINISHED'}
+
+
+class BONEMANCER_OT_clear_cell(CellOperator, bpy.types.Operator):
+    bl_idname = "bonemancer.clear_cell"
+    bl_label = "Clear Cell"
+    bl_description = "Take the bone off this cell. The bone itself is kept"
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+
+    def execute(self, context):
+        cell = self.filled_cell(context)
+        if cell is None:
+            return {'CANCELLED'}
+        tab = find_tab(get_rig(context.scene), self.tab)
+        settings = context.scene.bonemancer_settings
+        if moving_cell(settings, get_rig(context.scene)) == cell:
+            clear_move(settings)
+        tab.cells.remove(next(i for i, c in enumerate(tab.cells) if c == cell))
+        tag_addon_panels(context)
+        return {'FINISHED'}
+
+
+class BONEMANCER_OT_start_move(CellOperator, bpy.types.Operator):
+    bl_idname = "bonemancer.start_move"
+    bl_label = "Move Cell"
+    bl_description = "Pick this cell up, then click an empty cell to put it there"
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        if self.filled_cell(context) is None:
+            return {'CANCELLED'}
+        settings = context.scene.bonemancer_settings
+        settings.move_tab, settings.move_row, settings.move_column = self.tab, self.row, self.column
+        tag_addon_panels(context)
+        return {'FINISHED'}
+
+
+class BONEMANCER_OT_cancel_move(bpy.types.Operator):
+    bl_idname = "bonemancer.cancel_move"
+    bl_label = "Cancel Move"
+    bl_description = "Put this cell back where it was"
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        clear_move(context.scene.bonemancer_settings)
+        tag_addon_panels(context)
+        return {'FINISHED'}
+
+
+class BONEMANCER_OT_move_cell(CellOperator, bpy.types.Operator):
+    bl_idname = "bonemancer.move_cell"
+    bl_label = "Move Here"
+    bl_description = "Move the picked-up cell here"
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
+
+    def execute(self, context):
+        tab = self.editable_tab(context)
+        if tab is None:
+            return {'CANCELLED'}
+        settings = context.scene.bonemancer_settings
+        cell = moving_cell(settings, get_rig(context.scene))
+        if cell is None or settings.move_tab != tab.name:
+            clear_move(settings)
+            self.report({'WARNING'}, "Pick a cell up with Move first")
+            return {'CANCELLED'}
+        if cell_at(tab, self.row, self.column) is not None:
+            self.report({'WARNING'}, "That cell is taken")
+            return {'CANCELLED'}
+        cell.row, cell.column = self.row, self.column
+        clear_move(settings)
+        tag_addon_panels(context)
+        return {'FINISHED'}
+
+
 class BONEMANCER_OT_new_layout_tab(bpy.types.Operator):
     bl_idname = "bonemancer.new_layout_tab"
     bl_label = "New Tab"
@@ -136,6 +272,8 @@ class BONEMANCER_OT_show_layout_tab(bpy.types.Operator):
     name: StringProperty()
 
     def execute(self, context):
-        context.scene.bonemancer_settings.layout_tab = self.name
+        settings = context.scene.bonemancer_settings
+        settings.layout_tab = self.name
+        clear_move(settings)
         tag_addon_panels(context)
         return {'FINISHED'}

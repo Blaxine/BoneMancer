@@ -311,11 +311,11 @@ Layout off.
 
 | Done | # | Phase | Title | Description | Depends on | Primary files |
 | ---- | - | ----- | ----- | ----------- | ---------- | ------------- |
-|  | S013 | S | Cell menu actions | Left / Right / Centre, Clear, Move (arms the move state; next empty-cell click moves; same cell cancels). | S003 | `bonemancer/operators/` |
-|  | S014 | S | Once per tab + side default | Placing a bone already on the tab moves it; side from the bone name on placement. | S003 | `bonemancer/core/` |
-|  | S015 | S | Reset session state | Clear Edit Layout and move state in `on_load_post` and `on_armature_change`. | S013 | `bonemancer/handlers.py`, `bonemancer/core/selection.py` |
-|  | S016 | U | Edit visuals | Filled-cell menu, "Click an empty cell to move <bone>" line, empty cells clickable only in Edit Layout. | S013 | `bonemancer/ui/` |
-|  | S017 | T | Extend suite | Move / cancel move, recolour, clear, duplicate-on-tab moves, same bone on two tabs, side defaults (`.L`, `_R`, centre), state reset on reload and pick change. | S014, S015, S016 | `tests/test_actionable_bones.py` |
+| ✅ | S013 | S | Cell menu actions | Left / Right / Centre, Clear, Move (arms the move state; next empty-cell click moves; same cell cancels). | S003 | `bonemancer/operators/` |
+| ✅ | S014 | S | Once per tab + side default | Placing a bone already on the tab moves it; side from the bone name on placement. | S003 | `bonemancer/core/` |
+| ✅ | S015 | S | Reset session state | Clear Edit Layout and move state in `on_load_post` and `on_armature_change`. | S013 | `bonemancer/handlers.py`, `bonemancer/core/selection.py` |
+| ✅ | S016 | U | Edit visuals | Filled-cell menu, "Click an empty cell to move <bone>" line, empty cells clickable only in Edit Layout. | S013 | `bonemancer/ui/` |
+| ✅ | S017 | T | Extend suite | Move / cancel move, recolour, clear, duplicate-on-tab moves, same bone on two tabs, side defaults (`.L`, `_R`, centre), state reset on reload and pick change. | S014, S015, S016 | `tests/test_actionable_bones.py` |
 
 ### Slice 4 — Linked and overridden rigs
 
@@ -495,3 +495,4 @@ Nothing here is built. Each entry names the alternative, then why it lost.
 | 2026-10-22 | Blaxine | Initial plan. |
 | 2026-10-26 | Blaxine | Slice 1 implemented. Empty cells are a disabled no-op button (labels squeezed the cell buttons); cell buttons have no per-bone `description()` (it stops `depress` drawing), so the panel names the active bone under the grid instead of a tooltip. Q4 resolved. |
 | 2026-10-26 | Blaxine | Slice 2 implemented. Q3 resolved: solo needs no extra rule. Ctrl/Alt acting as a plain click is not covered by a test (a background run can't send a click event); check it by hand. |
+| 2026-10-26 | Blaxine | Slice 3 implemented. A filled cell's menu is a popup from a cell button, not a menu button (those draw a dropdown arrow in the grid). A move is also dropped by switching tab, turning Edit Layout off or clearing the moved cell. |

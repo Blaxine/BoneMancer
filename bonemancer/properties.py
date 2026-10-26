@@ -6,6 +6,7 @@ from bpy.props import (StringProperty, IntProperty, FloatProperty, BoolProperty,
                        PointerProperty)
 from bpy.types import PropertyGroup
 
+from .core.layout import clear_move
 from .core.selection import on_armature_change, on_picker_index
 from .core.shape_keys import set_shape_key_value
 from .core.utils import armature_poll
@@ -68,7 +69,12 @@ class BONEMANCER_PG_Settings(PropertyGroup):
         name="Edit Layout",
         description="Click an empty cell to place the bone that's active in the viewport",
         default=False,
+        update=lambda self, ctx: None if self.edit_layout else clear_move(self),
     )
+    # The cell a pending Move picked up; no move while move_tab is empty
+    move_tab: StringProperty(name="Moving From Tab")
+    move_row: IntProperty(name="Moving From Row")
+    move_column: IntProperty(name="Moving From Column")
 
 
 class BONEMANCER_PG_LayoutCell(PropertyGroup):
