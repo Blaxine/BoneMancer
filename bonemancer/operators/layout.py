@@ -4,11 +4,13 @@
 import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 
-from ..core.layout import (LAYOUT_LOCKED_MESSAGE, active_bone_name, active_tab, bone_hidden_in_layout, cell_at,
-                           clear_move, find_tab, layout_edit_refusal, moving_cell, place_bone)
+from ..core.layout import (LAYOUT_LOCKED_MESSAGE, SIDE_ITEMS, active_bone_name, active_tab, add_tab,
+                           bone_hidden_in_layout, cell_at, clear_move, find_tab, layout_edit_refusal, moving_cell,
+                           place_bone, tab_name_refusal)
 from ..core.selection import select_bone_in_viewport, toggle_bone_in_viewport
 from ..core.templates import apply_templates
 from ..core.utils import get_rig, tag_addon_panels
+from ..ui.common import plural
 from ..ui.layout import draw_cell_menu
 
 
@@ -81,35 +83,20 @@ class BONEMANCER_OT_layout_locked(InertButton, bpy.types.Operator):
     bl_description = LAYOUT_LOCKED_MESSAGE
 
 
-class BONEMANCER_OT_place_bone(bpy.types.Operator):
-    bl_idname = "bonemancer.place_bone"
-    bl_label = "Place Bone"
-    bl_description = "Place the bone that's active in the viewport in this cell"
-    bl_options = {'REGISTER', 'UNDO'}
-    tab: StringProperty()
-    row: IntProperty()
-    column: IntProperty()
+class EditableRig:
+    """An operator that changes the picked rig's layout."""
 
-    def execute(self, context):
+    def editable_rig(self, context):
+        """The picked rig, or None after reporting why its layout can't be edited."""
         rig = get_rig(context.scene)
         refusal = layout_edit_refusal(rig)
         if refusal:
             self.report({'WARNING'}, refusal)
-            return {'CANCELLED'}
-        tab = find_tab(rig, self.tab)
-        if tab is None or not (0 <= self.row < tab.rows and 0 <= self.column < tab.columns):
-            self.report({'WARNING'}, "That cell doesn't exist")
-            return {'CANCELLED'}
-        bone_name = active_bone_name(rig)
-        if not bone_name:
-            self.report({'WARNING'}, "Select a bone in the viewport first")
-            return {'CANCELLED'}
-        place_bone(tab, self.row, self.column, bone_name)
-        tag_addon_panels(context)
-        return {'FINISHED'}
+            return None
+        return rig
 
 
-class CellOperator:
+class CellOperator(EditableRig):
     """An operator on one cell of a tab of the picked rig's layout."""
     tab: StringProperty()
     row: IntProperty()
@@ -117,10 +104,8 @@ class CellOperator:
 
     def editable_tab(self, context):
         """The tab, or None after reporting why it can't be edited."""
-        rig = get_rig(context.scene)
-        refusal = layout_edit_refusal(rig)
-        if refusal:
-            self.report({'WARNING'}, refusal)
+        rig = self.editable_rig(context)
+        if rig is None:
             return None
         tab = find_tab(rig, self.tab)
         if tab is None or not (0 <= self.row < tab.rows and 0 <= self.column < tab.columns):
@@ -129,12 +114,31 @@ class CellOperator:
         return tab
 
     def filled_cell(self, context):
-        """The cell, or None after reporting why it can't be edited."""
+        """(tab, cell), or (None, None) after reporting why the cell can't be edited."""
         tab = self.editable_tab(context)
         cell = tab and cell_at(tab, self.row, self.column)
         if tab and cell is None:
             self.report({'WARNING'}, "That cell is empty")
-        return cell
+        return (tab, cell) if cell is not None else (None, None)
+
+
+class BONEMANCER_OT_place_bone(CellOperator, bpy.types.Operator):
+    bl_idname = "bonemancer.place_bone"
+    bl_label = "Place Bone"
+    bl_description = "Place the bone that's active in the viewport in this cell"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        tab = self.editable_tab(context)
+        if tab is None:
+            return {'CANCELLED'}
+        bone_name = active_bone_name(tab.id_data)
+        if not bone_name:
+            self.report({'WARNING'}, "Select a bone in the viewport first")
+            return {'CANCELLED'}
+        place_bone(tab, self.row, self.column, bone_name)
+        tag_addon_panels(context)
+        return {'FINISHED'}
 
 
 class BONEMANCER_OT_cell_menu(CellOperator, bpy.types.Operator):
@@ -144,10 +148,9 @@ class BONEMANCER_OT_cell_menu(CellOperator, bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def invoke(self, context, event):
-        cell = self.filled_cell(context)
+        tab, cell = self.filled_cell(context)
         if cell is None:
             return {'CANCELLED'}
-        tab = find_tab(get_rig(context.scene), self.tab)
         context.window_manager.popup_menu(lambda menu, _ctx: draw_cell_menu(menu.layout, tab, cell),
                                           title=cell.bone_name, icon='BONE_DATA')
         return {'FINISHED'}
@@ -161,11 +164,10 @@ class BONEMANCER_OT_set_cell_side(CellOperator, bpy.types.Operator):
     bl_label = "Set Side"
     bl_description = "Colour this cell as a left, right or centre control"
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
-    side: EnumProperty(items=[('LEFT', "Left", ""), ('RIGHT', "Right", ""), ('CENTER', "Centre", "")],
-                       default='CENTER')
+    side: EnumProperty(items=SIDE_ITEMS, default='CENTER')
 
     def execute(self, context):
-        cell = self.filled_cell(context)
+        _tab, cell = self.filled_cell(context)
         if cell is None:
             return {'CANCELLED'}
         cell.side = self.side
@@ -180,12 +182,11 @@ class BONEMANCER_OT_clear_cell(CellOperator, bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
 
     def execute(self, context):
-        cell = self.filled_cell(context)
+        tab, cell = self.filled_cell(context)
         if cell is None:
             return {'CANCELLED'}
-        tab = find_tab(get_rig(context.scene), self.tab)
         settings = context.scene.bonemancer_settings
-        if moving_cell(settings, get_rig(context.scene)) == cell:
+        if moving_cell(settings, tab.id_data) == cell:
             clear_move(settings)
         tab.cells.remove(next(i for i, c in enumerate(tab.cells) if c == cell))
         tag_addon_panels(context)
@@ -199,7 +200,7 @@ class BONEMANCER_OT_start_move(CellOperator, bpy.types.Operator):
     bl_options = {'INTERNAL'}
 
     def execute(self, context):
-        if self.filled_cell(context) is None:
+        if self.filled_cell(context)[1] is None:
             return {'CANCELLED'}
         settings = context.scene.bonemancer_settings
         settings.move_tab, settings.move_row, settings.move_column = self.tab, self.row, self.column
@@ -230,7 +231,7 @@ class BONEMANCER_OT_move_cell(CellOperator, bpy.types.Operator):
         if tab is None:
             return {'CANCELLED'}
         settings = context.scene.bonemancer_settings
-        cell = moving_cell(settings, get_rig(context.scene))
+        cell = moving_cell(settings, tab.id_data)
         if cell is None or settings.move_tab != tab.name:
             clear_move(settings)
             self.report({'WARNING'}, "Pick a cell up with Move first")
@@ -244,7 +245,7 @@ class BONEMANCER_OT_move_cell(CellOperator, bpy.types.Operator):
         return {'FINISHED'}
 
 
-class BONEMANCER_OT_apply_layout_template(bpy.types.Operator):
+class BONEMANCER_OT_apply_layout_template(EditableRig, bpy.types.Operator):
     bl_idname = "bonemancer.apply_layout_template"
     bl_label = "Apply Rigify Template"
     bl_description = ("Add Body, Hands and Face tabs and place the controls of a generated Rigify human on "
@@ -252,21 +253,19 @@ class BONEMANCER_OT_apply_layout_template(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        rig = get_rig(context.scene)
-        refusal = layout_edit_refusal(rig)
-        if refusal:
-            self.report({'WARNING'}, refusal)
+        rig = self.editable_rig(context)
+        if rig is None:
             return {'CANCELLED'}
         had_tabs = len(rig.bonemancer_layout) > 0
         placed = apply_templates(rig)
         if not had_tabs:
             context.scene.bonemancer_settings.layout_tab = rig.bonemancer_layout[0].name
-        self.report({'INFO'}, f"{placed} control{'' if placed == 1 else 's'} placed")
+        self.report({'INFO'}, f"{plural(placed, 'control')} placed")
         tag_addon_panels(context)
         return {'FINISHED'}
 
 
-class BONEMANCER_OT_new_layout_tab(bpy.types.Operator):
+class BONEMANCER_OT_new_layout_tab(EditableRig, bpy.types.Operator):
     bl_idname = "bonemancer.new_layout_tab"
     bl_label = "New Tab"
     bl_description = "Add an empty tab to this rig's layout"
@@ -279,35 +278,28 @@ class BONEMANCER_OT_new_layout_tab(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
-        rig = get_rig(context.scene)
-        refusal = layout_edit_refusal(rig)
+        rig = self.editable_rig(context)
+        if rig is None:
+            return {'CANCELLED'}
+        name = self.name.strip()
+        refusal = tab_name_refusal(rig, name)
         if refusal:
             self.report({'WARNING'}, refusal)
             return {'CANCELLED'}
-        name = self.name.strip()
-        if not name:
-            self.report({'WARNING'}, "Give the tab a name")
-            return {'CANCELLED'}
-        if find_tab(rig, name):
-            self.report({'WARNING'}, f"A tab named '{name}' already exists")
-            return {'CANCELLED'}
-        tab = rig.bonemancer_layout.add()
-        tab.name, tab.columns, tab.rows = name, self.columns, self.rows
+        add_tab(rig, name, self.columns, self.rows)
         context.scene.bonemancer_settings.layout_tab = name
         tag_addon_panels(context)
         return {'FINISHED'}
 
 
-class TabOperator:
+class TabOperator(EditableRig):
     """An operator on one tab of the picked rig's layout, the shown one when name is empty."""
     name: StringProperty(name="Tab")
 
     def editable_tab(self, context):
         """The tab, or None after reporting why it can't be edited."""
-        rig = get_rig(context.scene)
-        refusal = layout_edit_refusal(rig)
-        if refusal:
-            self.report({'WARNING'}, refusal)
+        rig = self.editable_rig(context)
+        if rig is None:
             return None
         tab = find_tab(rig, self.name) if self.name else active_tab(context.scene, rig)
         if tab is None:
@@ -337,14 +329,12 @@ class BONEMANCER_OT_rename_layout_tab(TabOperator, bpy.types.Operator):
         if tab is None:
             return {'CANCELLED'}
         new_name = self.new_name.strip()
-        if not new_name:
-            self.report({'WARNING'}, "Give the tab a name")
-            return {'CANCELLED'}
-        if new_name != tab.name and find_tab(get_rig(context.scene), new_name):
-            self.report({'WARNING'}, f"A tab named '{new_name}' already exists")
+        refusal = tab_name_refusal(tab.id_data, new_name, tab)
+        if refusal:
+            self.report({'WARNING'}, refusal)
             return {'CANCELLED'}
         settings = context.scene.bonemancer_settings
-        shown = active_tab(context.scene, get_rig(context.scene)) == tab
+        shown = active_tab(context.scene, tab.id_data) == tab
         if settings.move_tab == tab.name:
             settings.move_tab = new_name
         tab.name = new_name
@@ -371,13 +361,14 @@ class BONEMANCER_OT_remove_layout_tab(TabOperator, bpy.types.Operator):
         tab = self.editable_tab(context)
         if tab is None:
             return {'CANCELLED'}
-        rig = get_rig(context.scene)
+        rig = tab.id_data
         settings = context.scene.bonemancer_settings
         if settings.move_tab == tab.name:
             clear_move(settings)
-        rig.bonemancer_layout.remove(next(i for i, t in enumerate(rig.bonemancer_layout) if t == tab))
+        rig.bonemancer_layout.remove(rig.bonemancer_layout.find(tab.name))
         # Show the first tab instead, if the shown one went
-        settings.layout_tab = active_tab(context.scene, rig).name if len(rig.bonemancer_layout) else ""
+        shown = active_tab(context.scene, rig)
+        settings.layout_tab = shown.name if shown else ""
         tag_addon_panels(context)
         return {'FINISHED'}
 

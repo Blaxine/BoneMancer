@@ -4,11 +4,11 @@
 import bpy
 
 from .compat import bone_is_selected, is_hidden, set_bone_selected, set_hidden
-from .layout import rename_layout_cells, reset_layout_session
-from .renaming import rename_set_entries
-from .rig_check import clear_rig_check, rename_ignore_entries
+from .layout import reset_layout_session
+from .renaming import follow_bone_rename
+from .rig_check import clear_rig_check
 from .shape_keys import scan_shape_keys_for_armature
-from .utils import get_rig, rig_is_editable
+from .utils import get_rig, live_bones, rig_is_editable
 
 
 # True while follow_viewport_rig() sets the pick, so on_armature_change
@@ -22,8 +22,7 @@ _quiet_picker = False
 
 
 def armature_bone_names(arm_obj):
-    bones = arm_obj.data.edit_bones if arm_obj.mode == 'EDIT' else arm_obj.data.bones
-    return [b.name for b in bones]
+    return [b.name for b in live_bones(arm_obj)]
 
 
 def update_bone_list(scene):
@@ -45,9 +44,7 @@ def update_bone_list(scene):
         old_set, new_set = set(old), set(names)
         for old_name, new_name in zip(old, names):
             if old_name != new_name and old_name not in new_set and new_name not in old_set:
-                rename_set_entries(arm_obj, old_name, new_name)
-                rename_ignore_entries(arm_obj, old_name, new_name)
-                rename_layout_cells(arm_obj, old_name, new_name)
+                follow_bone_rename(arm_obj, old_name, new_name)
 
     settings.bone_selection.clear()
     for name in names:
@@ -100,8 +97,7 @@ def selected_bone_names(ob):
     """ob's selected, visible bones in armature order."""
     if not ob or ob.type != 'ARMATURE':
         return []
-    bones = ob.data.edit_bones if ob.mode == 'EDIT' else ob.data.bones
-    return [b.name for b in bones if bone_selected_in_viewport(ob, b.name)]
+    return [b.name for b in live_bones(ob) if bone_selected_in_viewport(ob, b.name)]
 
 
 # Selected bones of the picked rig as of the last handler run; a change means
@@ -139,18 +135,26 @@ def sync_selected_bone(scene, view_layer):
     return changed
 
 
-def select_bone_in_viewport(context, obj, bone_name):
-    """
-    Make bone_name the only selected bone of obj, and its active bone, showing
-    it if hidden. In armature Edit Mode the edit bone is selected; otherwise obj
-    becomes active in Pose Mode. Returns an error message, or '' on success.
-    """
+def bone_selection_refusal(context, obj):
+    """Why obj's bones can't be selected from the sidebar, or '' if they can."""
     if not obj:
         return "No valid armature"
     if context.view_layer.objects.get(obj.name) != obj:
         return f"'{obj.name}' is not in the current view layer"
     if not rig_is_editable(obj):
         return "Rig is linked from a library; make a library override first"
+    return ""
+
+
+def select_bone_in_viewport(context, obj, bone_name):
+    """
+    Make bone_name the only selected bone of obj, and its active bone, showing
+    it if hidden. In armature Edit Mode the edit bone is selected; otherwise obj
+    becomes active in Pose Mode. Returns an error message, or '' on success.
+    """
+    error = bone_selection_refusal(context, obj)
+    if error:
+        return error
 
     if obj.mode == 'EDIT':
         eb = obj.data.edit_bones.get(bone_name)
@@ -207,12 +211,9 @@ def toggle_bone_in_viewport(context, obj, bone_name):
     added bone becomes active. Unlike select_bone_in_viewport it never unhides
     the bone. Returns an error message, or '' on success.
     """
-    if not obj:
-        return "No valid armature"
-    if context.view_layer.objects.get(obj.name) != obj:
-        return f"'{obj.name}' is not in the current view layer"
-    if not rig_is_editable(obj):
-        return "Rig is linked from a library; make a library override first"
+    error = bone_selection_refusal(context, obj)
+    if error:
+        return error
 
     if obj.mode == 'EDIT':
         eb = obj.data.edit_bones.get(bone_name)

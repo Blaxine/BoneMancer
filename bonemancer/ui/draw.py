@@ -3,7 +3,7 @@
 
 from ..core.compat import bone_is_selected, is_hidden
 from ..core.rig_check import constraint_problem, is_ignored, issue_explanation, issue_fixed, library_ignore
-from ..core.utils import path_key, pose_bone_path, rig_is_editable, set_is_hidden
+from ..core.utils import live_bones, path_key, pose_bone_path, rig_is_editable, set_is_hidden
 from .common import bone_name_button, hint, plural, sub_panel, wrapped_label
 
 
@@ -40,8 +40,7 @@ def draw_bone_set(context, layout, rig, grp):
 def settings_bone(rig, name):
     """The bone whose Deform option the panels edit: the edit bone in Edit Mode,
     where changes to the plain bone would be lost on leaving it."""
-    bones = rig.data.edit_bones if rig.mode == 'EDIT' else rig.data.bones
-    return bones.get(name)
+    return live_bones(rig).get(name)
 
 
 def draw_bone_settings(layout, rig, name):

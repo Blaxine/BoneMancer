@@ -22,12 +22,17 @@ def pick(obj):
     selection.follow_viewport_rig(sc, obj)
 
 
-def fresh():
-    """A rig with BONES, picked, in Object Mode, with an empty layout."""
+def reset():
+    """No rig picked, no objects, and no layout settings left from the last check."""
     pick(None)
     clear_data()
     sc.bonemancer_settings.layout_tab = ""
     sc.bonemancer_settings.edit_layout = False
+
+
+def fresh():
+    """A rig with BONES, picked, in Object Mode, with an empty layout."""
+    reset()
     rig = make_arm("Rig", BONES)
     pick(rig)
     return rig
@@ -63,6 +68,10 @@ def selected(rig):
     return sorted(pb.name for pb in rig.pose.bones if compat.bone_is_selected(pb))
 
 
+def silhouette_boxes(view):
+    return [d for d in view.drawn("operator") if d.args[0] == "bonemancer.layout_blank" and d.kwargs.get("emboss")]
+
+
 # ---------------------------------------------------------------- tabs
 
 def empty_states():
@@ -70,7 +79,7 @@ def empty_states():
     no_rig = draw()
     fresh()
     empty = draw()
-    got = (any("Pick an armature" in t or "armature" in t.lower() for t in no_rig.texts("label")),
+    got = (any("armature" in t.lower() for t in no_rig.texts("label")),
            [d.args[0] for d in empty.drawn("operator")],
            any("Lay out" in t for t in empty.texts("label")))
     return (got == (True, ["bonemancer.apply_layout_template", "bonemancer.new_layout_tab"], True), got)
@@ -348,7 +357,7 @@ def grid_drawing():
     sc.bonemancer_settings.edit_layout = True
     editing_view = draw()
     picks = [(d.result, d.kwargs) for d in picking_view.drawn("operator") if d.args[0] == "bonemancer.pick_bone"]
-    grid = [d for d in picking_view.drawn("grid_flow")]
+    grid = list(picking_view.drawn("grid_flow"))
     blanks = [d for d in picking_view.drawn("operator") if d.args[0] == "bonemancer.layout_blank"]
     places = [d for d in editing_view.drawn("operator") if d.args[0] == "bonemancer.place_bone"]
     tabs = [d.kwargs for d in picking_view.drawn("operator") if d.args[0] == "bonemancer.show_layout_tab"]
@@ -480,7 +489,7 @@ def edit_drawing():
 
     def ops(view):
         return [(d.args[0].split(".")[1], d.kwargs.get("icon")) for d in view.drawn("operator")
-                if d.args[0] not in ("bonemancer.show_layout_tab",)]
+                if d.args[0] != "bonemancer.show_layout_tab"]
     editing = ops(draw())
     cell_op("start_move", 0, 0)
     view = draw()
@@ -537,9 +546,7 @@ check("templates: silhouettes fit and mirror, every control has its own cell, no
 
 def rigify_human():
     """Generate a Rigify human; returns the generated rig, picked, with an empty layout."""
-    pick(None)
-    clear_data()
-    sc.bonemancer_settings.layout_tab = ""
+    reset()
     addon_utils.enable("rigify", default_set=True)
     bpy.ops.object.armature_human_metarig_add()
     meta = bpy.context.active_object
@@ -615,16 +622,13 @@ check("re-applying keeps moved and recoloured cells, and places a cleared contro
 
 
 def apply_on_plain_rig():
-    pick(None)
-    clear_data()
+    reset()
     rig = make_arm("Plain", ("Bone", "Bone.001"))
     pick(rig)
     placed = templates.apply_templates(rig)
     rig.bonemancer_layout.clear()
     result = op("apply_layout_template")
-    view = draw()
-    boxes = [d for d in view.drawn("operator") if d.args[0] == "bonemancer.layout_blank" and d.kwargs.get("emboss")]
-    got = (placed, result, [(t.name, len(t.cells)) for t in rig.bonemancer_layout], len(boxes))
+    got = (placed, result, [(t.name, len(t.cells)) for t in rig.bonemancer_layout], len(silhouette_boxes(draw())))
     return (got == (0, {'FINISHED'}, [("Body", 0), ("Hands", 0), ("Face", 0)],
                     len(templates.silhouette_cells(templates.BODY))),
             got)
@@ -637,9 +641,7 @@ def user_tab_kept():
     place("root", 0, 0)
     op("apply_layout_template")
     body = layout.find_tab(rig, "Body")
-    view = draw()
-    boxes = [d for d in view.drawn("operator") if d.args[0] == "bonemancer.layout_blank" and d.kwargs.get("emboss")]
-    got = ((body.columns, body.rows, body.template), cells(rig), len(boxes))
+    got = ((body.columns, body.rows, body.template), cells(rig), len(silhouette_boxes(draw())))
     return (got == ((4, 4, ""), [("root", 0, 0, 'CENTER')], 0), got)
 check("a tab of the same name made by hand is kept as it is, without a silhouette", user_tab_kept)
 
@@ -659,5 +661,4 @@ def survives_reload():
     return (got == ([("Body", 16, 24)], [("arm.L", 3, 2, 'LEFT')]), got)
 check("the layout survives save and reopen", survives_reload)
 
-sc = bpy.context.scene
 finish()

@@ -5,11 +5,9 @@ import bpy
 from bpy.props import StringProperty, IntProperty, EnumProperty
 
 from ..core.compat import toggle_hidden
-from ..core.layout import rename_layout_cells
-from ..core.renaming import count_bone_references, rename_set_entries, update_driver_variable_paths
-from ..core.rig_check import rename_ignore_entries
+from ..core.renaming import count_bone_references, follow_bone_rename, update_driver_variable_paths
 from ..core.selection import armature_bone_names, select_bone_in_viewport, update_bone_list
-from ..core.utils import get_rig, rig_is_editable
+from ..core.utils import get_rig, live_bones, rig_is_editable
 
 
 class BONEMANCER_OT_show_bone_relations(bpy.types.Operator):
@@ -246,8 +244,7 @@ class BONEMANCER_OT_rename_bone(bpy.types.Operator):
 
         # 2) Rename the bone in the layer that is live in the current mode
         arm_obj = get_rig(context.scene)
-        bones = arm_obj.data.edit_bones if arm_obj.mode == 'EDIT' else arm_obj.data.bones
-        bone = bones.get(self.bone_name)
+        bone = live_bones(arm_obj).get(self.bone_name)
         if not bone:
             self.report({'ERROR'}, f"Bone '{self.bone_name}' not found")
             return {'CANCELLED'}
@@ -256,9 +253,7 @@ class BONEMANCER_OT_rename_bone(bpy.types.Operator):
         new_name = bone.name  # Blender may still adjust it (e.g. length limit)
 
         # 3) Update group entries, driver variables on this rig, and the picker
-        rename_set_entries(arm_obj, self.bone_name, new_name)
-        rename_ignore_entries(arm_obj, self.bone_name, new_name)
-        rename_layout_cells(arm_obj, self.bone_name, new_name)
+        follow_bone_rename(arm_obj, self.bone_name, new_name)
         update_driver_variable_paths(arm_obj, self.bone_name, new_name)
         update_bone_list(context.scene)
         arm_obj.update_tag()

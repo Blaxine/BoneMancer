@@ -3,6 +3,8 @@
 
 import bpy
 
+from .layout import rename_layout_cells
+from .rig_check import rename_ignore_entries
 from .utils import path_key, rig_sets
 
 
@@ -11,6 +13,13 @@ def rename_set_entries(arm_obj, old_name, new_name):
         for entry in grp.bones:
             if entry.bone_name == old_name:
                 entry.bone_name = new_name
+
+
+def follow_bone_rename(arm_obj, old_name, new_name):
+    """Carry a bone rename into everything the add-on stores by name: sets, Rig Check ignores, layout cells."""
+    rename_set_entries(arm_obj, old_name, new_name)
+    rename_ignore_entries(arm_obj, old_name, new_name)
+    rename_layout_cells(arm_obj, old_name, new_name)
 
 
 def bone_data_path(bone_name):

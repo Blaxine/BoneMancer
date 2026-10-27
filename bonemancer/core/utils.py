@@ -37,6 +37,11 @@ def rig_is_editable(arm_obj):
     return arm_obj is not None and (arm_obj.library is None or arm_obj.override_library is not None)
 
 
+def live_bones(arm_obj):
+    """The armature's bones in the layer that is live: edit bones in Edit Mode, else bones."""
+    return arm_obj.data.edit_bones if arm_obj.mode == 'EDIT' else arm_obj.data.bones
+
+
 def armature_poll(self, obj):
     return obj.type == 'ARMATURE' and bpy.context.scene in obj.users_scene
 

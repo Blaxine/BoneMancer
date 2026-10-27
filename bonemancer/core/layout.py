@@ -9,6 +9,9 @@ at most once on a tab, but may sit on several tabs. Cells store names only.
 import bpy
 
 from .compat import is_hidden
+from .utils import live_bones
+
+SIDE_ITEMS = [('LEFT', "Left", ""), ('RIGHT', "Right", ""), ('CENTER', "Centre", "")]
 
 
 def layout_tabs(arm_obj):
@@ -39,7 +42,7 @@ def active_bone_name(arm_obj):
     """The armature's active bone (edit bone in Edit Mode), or ''."""
     if not arm_obj or arm_obj.type != 'ARMATURE':
         return ""
-    bone = arm_obj.data.edit_bones.active if arm_obj.mode == 'EDIT' else arm_obj.data.bones.active
+    bone = live_bones(arm_obj).active
     return bone.name if bone else ""
 
 
@@ -73,23 +76,16 @@ def bone_hidden_in_layout(arm_obj, bone_name):
     True if the bone is hidden in the viewport: its own Hide flag, or it is in
     bone collections and none of them is visible (their parents included).
     """
-    if arm_obj.mode == 'EDIT':
-        bone = arm_obj.data.edit_bones.get(bone_name)
-        if bone is None:
-            return False
-        hidden = bone.hide
-    else:
-        bone = arm_obj.data.bones.get(bone_name)
-        if bone is None:
-            return False
-        hidden = is_hidden(arm_obj.pose.bones.get(bone_name))
+    bone = live_bones(arm_obj).get(bone_name)
+    if bone is None:
+        return False
+    hidden = bone.hide if arm_obj.mode == 'EDIT' else is_hidden(arm_obj.pose.bones.get(bone_name))
     collections = bone.collections
     return hidden or (len(collections) > 0 and not any(c.is_visible_effectively for c in collections))
 
 
 def bone_exists(arm_obj, bone_name):
-    bones = arm_obj.data.edit_bones if arm_obj.mode == 'EDIT' else arm_obj.data.bones
-    return bones.get(bone_name) is not None
+    return live_bones(arm_obj).get(bone_name) is not None
 
 
 def rename_layout_cells(arm_obj, old_name, new_name):
@@ -100,6 +96,21 @@ def rename_layout_cells(arm_obj, old_name, new_name):
         for cell in tab.cells:
             if cell.bone_name == old_name:
                 cell.bone_name = new_name
+
+
+def tab_name_refusal(arm_obj, name, current=None):
+    """Why name can't be given to a tab (current is the tab being renamed), or ''."""
+    if not name:
+        return "Give the tab a name"
+    if (current is None or name != current.name) and find_tab(arm_obj, name):
+        return f"A tab named '{name}' already exists"
+    return ""
+
+
+def add_tab(arm_obj, name, columns, rows, template=""):
+    tab = arm_obj.bonemancer_layout.add()
+    tab.name, tab.columns, tab.rows, tab.template = name, columns, rows, template
+    return tab
 
 
 def moving_cell(settings, arm_obj):

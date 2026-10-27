@@ -10,7 +10,7 @@ never saved; a tab made from a template only stores the template's id.
 
 from typing import NamedTuple
 
-from .layout import bone_exists, find_tab, side_from_name
+from .layout import add_tab, bone_exists, find_tab, place_bone
 
 
 class LayoutTemplate(NamedTuple):
@@ -149,14 +149,19 @@ FACE = LayoutTemplate(
 TEMPLATES = (BODY, HANDS, FACE)
 
 
-def find_template(template_id):
-    return next((t for t in TEMPLATES if t.id == template_id), None)
-
-
 def silhouette_cells(template):
     """The (row, column) cells the silhouette covers, the template's own cells included."""
     body = {(r, c) for r, line in enumerate(template.silhouette) for c, ch in enumerate(line) if ch == "#"}
-    return body | set(template.cells.values())
+    return frozenset(body | set(template.cells.values()))
+
+
+# Worked out once: the panel asks on every redraw
+SILHOUETTES = {t.id: silhouette_cells(t) for t in TEMPLATES}
+
+
+def tab_silhouette(tab):
+    """The cells under the silhouette of the template tab came from; none for a user tab."""
+    return SILHOUETTES.get(tab.template, frozenset())
 
 
 def apply_templates(arm_obj, templates=TEMPLATES):
@@ -168,19 +173,15 @@ def apply_templates(arm_obj, templates=TEMPLATES):
     """
     placed = 0
     for template in templates:
-        tab = find_tab(arm_obj, template.tab)
-        if tab is None:
-            tab = arm_obj.bonemancer_layout.add()
-            tab.name, tab.columns, tab.rows, tab.template = (template.tab, template.columns, template.rows,
-                                                            template.id)
+        tab = (find_tab(arm_obj, template.tab)
+               or add_tab(arm_obj, template.tab, template.columns, template.rows, template.id))
         on_tab = {c.bone_name for c in tab.cells}
         taken = {(c.row, c.column) for c in tab.cells}
         for bone_name, (row, column) in template.cells.items():
             if (bone_name in on_tab or (row, column) in taken or not bone_exists(arm_obj, bone_name)
                     or row >= tab.rows or column >= tab.columns):
                 continue
-            cell = tab.cells.add()
-            cell.bone_name, cell.row, cell.column, cell.side = bone_name, row, column, side_from_name(bone_name)
+            place_bone(tab, row, column, bone_name)
             taken.add((row, column))
             placed += 1
     return placed

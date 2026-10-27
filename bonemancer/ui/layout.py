@@ -3,10 +3,10 @@
 
 import bpy
 
-from ..core.layout import (active_bone_name, active_tab, bone_exists, bone_hidden_in_layout, cells_by_position,
-                           layout_is_editable, layout_tabs, moving_cell)
+from ..core.layout import (SIDE_ITEMS, active_bone_name, active_tab, bone_exists, bone_hidden_in_layout,
+                           cells_by_position, layout_is_editable, layout_tabs, moving_cell)
 from ..core.selection import bone_selected_in_viewport
-from ..core.templates import find_template, silhouette_cells
+from ..core.templates import tab_silhouette
 from .common import hint
 
 SIDE_ICONS = {'LEFT': 'COLLECTION_COLOR_05', 'RIGHT': 'COLLECTION_COLOR_01', 'CENTER': 'COLLECTION_COLOR_03'}
@@ -64,8 +64,7 @@ def draw_layout(context, layout, rig):
 
 def draw_grid(layout, rig, tab, editing, moving=None):
     cells = cells_by_position(tab)
-    template = find_template(tab.template)
-    silhouette = silhouette_cells(template) if template else set()
+    silhouette = tab_silhouette(tab)
     grid = layout.grid_flow(row_major=True, columns=tab.columns, even_columns=True, even_rows=True, align=True)
     for row in range(tab.rows):
         for column in range(tab.columns):
@@ -111,7 +110,7 @@ def draw_cell_menu(layout, tab, cell):
     def target(op):
         op.tab, op.row, op.column = tab.name, cell.row, cell.column
         return op
-    for side, label in (('LEFT', "Left"), ('RIGHT', "Right"), ('CENTER', "Centre")):
+    for side, label, _description in SIDE_ITEMS:
         target(layout.operator("bonemancer.set_cell_side", text=label, icon=SIDE_ICONS[side])).side = side
     layout.separator()
     target(layout.operator("bonemancer.start_move", text="Move", icon='VIEW_PAN'))
